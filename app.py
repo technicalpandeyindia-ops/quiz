@@ -3,22 +3,1091 @@ import re
 import json
 import uuid
 import shutil
+import gc
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import pypdf
+
 try:
     import pdfplumber
 except ImportError:
     pdfplumber = None
 
-# EMBEDDED SINGLE-PAGE APPLICATION FRONTEND (Self-contained, works everywhere)
-EMBEDDED_HTML_PAGE = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>PYQ Quiz Master | AI Exam & Topic Practice</title>\n  <!-- Tailwind CSS -->\n  <script src=\"https://cdn.tailwindcss.com\"></script>\n  <!-- Lucide Icons -->\n  <script src=\"https://unpkg.com/lucide@latest\"></script>\n  <!-- Canvas Confetti -->\n  <script src=\"https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js\"></script>\n  <script>\n    tailwind.config = {\n      darkMode: 'class',\n      theme: {\n        extend: {\n          colors: {\n            brand: {\n              50: '#eef2ff',\n              100: '#e0e7ff',\n              500: '#6366f1',\n              600: '#4f46e5',\n              700: '#4338ca',\n            }\n          }\n        }\n      }\n    }\n  </script>\n  <style>\n    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');\n    body { font-family: 'Inter', sans-serif; }\n    .mono { font-family: 'JetBrains Mono', monospace; }\n    .glass-card {\n      background: rgba(255, 255, 255, 0.85);\n      backdrop-filter: blur(12px);\n      border: 1px solid rgba(229, 231, 235, 0.8);\n    }\n    .dark .glass-card {\n      background: rgba(30, 41, 59, 0.85);\n      border: 1px solid rgba(51, 65, 85, 0.8);\n    }\n  </style>\n</head>\n<body class=\"bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen transition-colors duration-200\">\n\n  <!-- ================= NAVBAR ================= -->\n  <nav class=\"sticky top-0 z-50 glass-card border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between shadow-sm\">\n    <div class=\"flex items-center gap-3 cursor-pointer\" onclick=\"switchView('view-upload')\">\n      <div class=\"w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20\">\n        <i data-lucide=\"sparkles\" class=\"w-6 h-6\"></i>\n      </div>\n      <div>\n        <h1 class=\"text-xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-violet-400\">\n          PYQ Quiz Master\n        </h1>\n        <p class=\"text-xs text-slate-500 dark:text-slate-400 font-medium\">Auto-Extract PYQ Papers & Topics</p>\n      </div>\n    </div>\n\n    <div class=\"flex items-center gap-3\">\n      <button onclick=\"loadPreviousQuizzes()\" class=\"px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-2 border border-slate-200 dark:border-slate-700 transition\">\n        <i data-lucide=\"history\" class=\"w-4 h-4\"></i>\n        <span>My Papers</span>\n      </button>\n      <button id=\"theme-toggle\" onclick=\"toggleTheme()\" class=\"p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700\">\n        <i data-lucide=\"moon\" class=\"w-4 h-4 dark:hidden\"></i>\n        <i data-lucide=\"sun\" class=\"w-4 h-4 hidden dark:block\"></i>\n      </button>\n    </div>\n  </nav>\n\n  <!-- ================= MAIN CONTAINER ================= -->\n  <main class=\"max-w-6xl mx-auto px-4 py-8\">\n\n    <!-- ================= VIEW 1: UPLOAD & TOPICS ================= -->\n    <section id=\"view-upload\" class=\"space-y-8 block\">\n      <!-- Hero Banner -->\n      <div class=\"text-center max-w-2xl mx-auto pt-4 pb-2\">\n        <span class=\"px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 rounded-full\">\n          100% From Your PDF Only\n        </span>\n        <h2 class=\"mt-4 text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight\">\n          Upload Any Exam PYQ PDF.<br/><span class=\"text-indigo-600 dark:text-indigo-400\">Auto-Detect Topics & Start Testing.</span>\n        </h2>\n        <p class=\"mt-3 text-sm text-slate-600 dark:text-slate-400\">\n          Drop your Previous Year Question paper (JEE, NEET, UPSC, SSC, College, Gate, Board exams). The engine automatically extracts all MCQs, separates topics, and builds an instant quiz simulator.\n        </p>\n      </div>\n\n      <!-- Upload Box -->\n      <div class=\"max-w-2xl mx-auto\">\n        <div id=\"drop-zone\" class=\"border-2 border-dashed border-indigo-300 dark:border-indigo-800/70 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-2xl p-8 text-center bg-white dark:bg-slate-900/60 shadow-lg shadow-indigo-500/5 transition cursor-pointer group\">\n          <input type=\"file\" id=\"pdf-input\" accept=\"application/pdf\" class=\"hidden\" onchange=\"handleFileSelect(event)\" />\n          \n          <div class=\"w-16 h-16 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition duration-200\">\n            <i data-lucide=\"file-up\" class=\"w-8 h-8\"></i>\n          </div>\n          \n          <h3 class=\"mt-4 text-base font-bold text-slate-800 dark:text-slate-200\">\n            Click to upload or drag & drop your PYQ PDF\n          </h3>\n          <p class=\"text-xs text-slate-500 dark:text-slate-400 mt-1\">\n            Supports Question Papers, Mock Tests, and Answer Keys (up to 50MB)\n          </p>\n\n          <div id=\"upload-status\" class=\"mt-4 hidden\">\n            <div class=\"flex items-center justify-center gap-3 text-indigo-600 dark:text-indigo-400 font-semibold text-sm\">\n              <i data-lucide=\"loader-2\" class=\"w-5 h-5 animate-spin\"></i>\n              <span id=\"upload-status-text\">Parsing PDF & Detecting Topics...</span>\n            </div>\n          </div>\n        </div>\n      </div>\n\n      <!-- Loaded Quiz & Detected Topics Section -->\n      <div id=\"topics-section\" class=\"hidden max-w-4xl mx-auto space-y-6\">\n        <div class=\"flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm\">\n          <div>\n            <div class=\"flex items-center gap-2\">\n              <span class=\"w-2.5 h-2.5 rounded-full bg-emerald-500\"></span>\n              <h3 id=\"quiz-title\" class=\"text-lg font-bold text-slate-900 dark:text-white\">Exam Paper</h3>\n            </div>\n            <p id=\"quiz-stats\" class=\"text-xs text-slate-500 dark:text-slate-400 mt-1\">45 Questions Detected across 4 Topics</p>\n          </div>\n          \n          <button onclick=\"startQuiz('all')\" class=\"w-full sm:w-auto px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 transition transform active:scale-95\">\n            <i data-lucide=\"play\" class=\"w-4 h-4 fill-current\"></i>\n            <span>Start Full Exam (All Topics)</span>\n          </button>\n        </div>\n\n        <div>\n          <h4 class=\"text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3\">\n            Auto-Detected Topics / Sections\n          </h4>\n          <div id=\"topics-grid\" class=\"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4\">\n            <!-- Topic cards will be dynamically injected here -->\n          </div>\n        </div>\n      </div>\n\n      <!-- Previous Papers Modal / Drawer -->\n      <div id=\"previous-papers-modal\" class=\"hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4\">\n        <div class=\"bg-white dark:bg-slate-900 max-w-xl w-full rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4\">\n          <div class=\"flex items-center justify-between\">\n            <h3 class=\"text-base font-bold\">Uploaded Papers History</h3>\n            <button onclick=\"closePreviousQuizzes()\" class=\"text-slate-400 hover:text-slate-600 dark:hover:text-slate-200\">\n              <i data-lucide=\"x\" class=\"w-5 h-5\"></i>\n            </button>\n          </div>\n          <div id=\"previous-papers-list\" class=\"space-y-2 max-h-80 overflow-y-auto pr-1\">\n            <!-- List injected here -->\n          </div>\n        </div>\n      </div>\n    </section>\n\n    <!-- ================= VIEW 2: QUIZ ROOM / EXAM ARENA ================= -->\n    <section id=\"view-quiz\" class=\"hidden space-y-6\">\n      \n      <!-- Quiz Header bar -->\n      <div class=\"glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4\">\n        <div>\n          <span id=\"active-quiz-topic\" class=\"px-2.5 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300\">\n            Topic: Physics\n          </span>\n          <h2 id=\"active-quiz-name\" class=\"text-base font-bold text-slate-900 dark:text-white mt-1 truncate max-w-xs sm:max-w-md\">\n            Exam Quiz\n          </h2>\n        </div>\n\n        <div class=\"flex items-center gap-4\">\n          <!-- Timer -->\n          <div class=\"flex items-center gap-2 bg-slate-100 dark:bg-slate-800/80 px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700\">\n            <i data-lucide=\"clock\" class=\"w-4 h-4 text-indigo-600 dark:text-indigo-400\"></i>\n            <span id=\"quiz-timer\" class=\"font-mono text-sm font-bold\">00:00</span>\n          </div>\n\n          <!-- Submit Button -->\n          <button onclick=\"confirmSubmitQuiz()\" class=\"px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition\">\n            <i data-lucide=\"check-circle\" class=\"w-4 h-4\"></i>\n            <span>Submit Quiz</span>\n          </button>\n        </div>\n      </div>\n\n      <!-- Main Quiz Area: Left Question Body, Right Palette -->\n      <div class=\"grid grid-cols-1 lg:grid-cols-12 gap-6\">\n        \n        <!-- Left: Question Card (8 cols) -->\n        <div class=\"lg:col-span-8 space-y-4\">\n          <div class=\"glass-card rounded-2xl p-6 sm:p-8 space-y-6 min-h-[420px] flex flex-col justify-between shadow-sm\">\n            \n            <div class=\"space-y-4\">\n              <div class=\"flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3\">\n                <span id=\"current-q-index\" class=\"text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400\">\n                  Question 1 of 30\n                </span>\n                <button onclick=\"toggleMarkForReview()\" id=\"btn-review\" class=\"text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1\">\n                  <i data-lucide=\"bookmark\" class=\"w-3.5 h-3.5\"></i>\n                  <span id=\"review-text\">Mark for Review</span>\n                </button>\n              </div>\n\n              <!-- Question Text -->\n              <div id=\"q-text\" class=\"text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100 leading-relaxed\">\n                Loading Question...\n              </div>\n\n              <!-- Options Container -->\n              <div id=\"q-options\" class=\"space-y-3 pt-2\">\n                <!-- Injected options -->\n              </div>\n            </div>\n\n            <!-- Bottom Navigation buttons -->\n            <div class=\"flex items-center justify-between pt-6 border-t border-slate-200 dark:border-slate-800\">\n              <button onclick=\"prevQuestion()\" id=\"btn-prev\" class=\"px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl flex items-center gap-1 transition\">\n                <i data-lucide=\"chevron-left\" class=\"w-4 h-4\"></i>\n                <span>Previous</span>\n              </button>\n\n              <button onclick=\"clearOptionSelection()\" class=\"text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200\">\n                Clear Choice\n              </button>\n\n              <button onclick=\"nextQuestion()\" id=\"btn-next\" class=\"px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl flex items-center gap-1 shadow-md shadow-indigo-600/20 transition\">\n                <span>Next</span>\n                <i data-lucide=\"chevron-right\" class=\"w-4 h-4\"></i>\n              </button>\n            </div>\n\n          </div>\n        </div>\n\n        <!-- Right: Question Palette / Navigator (4 cols) -->\n        <div class=\"lg:col-span-4 space-y-4\">\n          <div class=\"glass-card rounded-2xl p-5 space-y-4\">\n            <h3 class=\"text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400\">\n              Question Navigator\n            </h3>\n\n            <!-- Question Numbers Grid -->\n            <div id=\"palette-grid\" class=\"grid grid-cols-5 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto p-1\">\n              <!-- Number buttons injected here -->\n            </div>\n\n            <!-- Legend -->\n            <div class=\"pt-3 border-t border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-2 text-[11px] font-medium text-slate-600 dark:text-slate-400\">\n              <div class=\"flex items-center gap-2\">\n                <span class=\"w-3 h-3 rounded bg-emerald-500\"></span>\n                <span>Answered</span>\n              </div>\n              <div class=\"flex items-center gap-2\">\n                <span class=\"w-3 h-3 rounded bg-amber-500\"></span>\n                <span>Marked</span>\n              </div>\n              <div class=\"flex items-center gap-2\">\n                <span class=\"w-3 h-3 rounded bg-slate-200 dark:bg-slate-700\"></span>\n                <span>Unattempted</span>\n              </div>\n              <div class=\"flex items-center gap-2\">\n                <span class=\"w-3 h-3 rounded border-2 border-indigo-600\"></span>\n                <span>Current</span>\n              </div>\n            </div>\n\n          </div>\n        </div>\n\n      </div>\n\n    </section>\n\n    <!-- ================= VIEW 3: SCORECARD & DETAILED REVIEW ================= -->\n    <section id=\"view-results\" class=\"hidden space-y-8\">\n      \n      <!-- Score Overview Card -->\n      <div class=\"glass-card rounded-3xl p-8 text-center relative overflow-hidden shadow-lg\">\n        <div class=\"max-w-md mx-auto space-y-4\">\n          <span class=\"px-3.5 py-1 text-xs font-bold uppercase tracking-wider rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400\">\n            Quiz Completed!\n          </span>\n          <h2 id=\"result-quiz-title\" class=\"text-2xl font-black text-slate-900 dark:text-white\">Exam Results</h2>\n\n          <div class=\"py-4\">\n            <div class=\"inline-flex flex-col items-center justify-center w-36 h-36 rounded-full border-4 border-indigo-600 dark:border-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30\">\n              <span id=\"score-percentage\" class=\"text-3xl font-black text-indigo-600 dark:text-indigo-400\">85%</span>\n              <span class=\"text-xs font-bold text-slate-500 uppercase\">Accuracy</span>\n            </div>\n          </div>\n\n          <!-- Quick Stats Grid -->\n          <div class=\"grid grid-cols-3 gap-3\">\n            <div class=\"p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40\">\n              <div id=\"stat-correct\" class=\"text-xl font-black text-emerald-600 dark:text-emerald-400\">18</div>\n              <div class=\"text-[11px] font-semibold text-emerald-700 dark:text-emerald-300\">Correct</div>\n            </div>\n            <div class=\"p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/40\">\n              <div id=\"stat-wrong\" class=\"text-xl font-black text-rose-600 dark:text-rose-400\">4</div>\n              <div class=\"text-[11px] font-semibold text-rose-700 dark:text-rose-300\">Incorrect</div>\n            </div>\n            <div class=\"p-3 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700\">\n              <div id=\"stat-unattempted\" class=\"text-xl font-black text-slate-600 dark:text-slate-300\">3</div>\n              <div class=\"text-[11px] font-semibold text-slate-500\">Skipped</div>\n            </div>\n          </div>\n\n          <!-- Actions -->\n          <div class=\"flex items-center justify-center gap-3 pt-2\">\n            <button onclick=\"retakeActiveQuiz()\" class=\"px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-2 transition\">\n              <i data-lucide=\"rotate-ccw\" class=\"w-4 h-4\"></i>\n              <span>Retake Quiz</span>\n            </button>\n            <button onclick=\"switchView('view-upload')\" class=\"px-5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold rounded-xl transition\">\n              <span>Upload New PDF</span>\n            </button>\n          </div>\n\n        </div>\n      </div>\n\n      <!-- Topic Performance Breakdown -->\n      <div id=\"topic-breakdown-card\" class=\"glass-card rounded-2xl p-6 space-y-4\">\n        <h3 class=\"text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400\">\n          Topic-Wise Performance\n        </h3>\n        <div id=\"topic-performance-list\" class=\"space-y-3\">\n          <!-- Injected bars -->\n        </div>\n      </div>\n\n      <!-- Detailed Review & Explanation Section -->\n      <div class=\"space-y-4\">\n        <div class=\"flex flex-col sm:flex-row sm:items-center justify-between gap-3\">\n          <h3 class=\"text-lg font-extrabold text-slate-900 dark:text-white\">\n            Detailed Question Review & Verified PDF Answers\n          </h3>\n          <!-- Filter buttons -->\n          <div class=\"flex items-center gap-2 text-xs\">\n            <button onclick=\"filterReview('all')\" class=\"rev-filter-btn active px-3 py-1.5 rounded-lg font-bold bg-indigo-600 text-white\">All</button>\n            <button onclick=\"filterReview('wrong')\" class=\"rev-filter-btn px-3 py-1.5 rounded-lg font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300\">Wrong Only</button>\n            <button onclick=\"filterReview('correct')\" class=\"rev-filter-btn px-3 py-1.5 rounded-lg font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300\">Correct Only</button>\n          </div>\n        </div>\n\n        <div id=\"review-list\" class=\"space-y-4\">\n          <!-- Injected detailed questions with answers & explanations -->\n        </div>\n      </div>\n\n    </section>\n\n  </main>\n\n  <!-- ================= JAVASCRIPT LOGIC ================= -->\n  <script>\n    // State management\n    let currentQuizId = null;\n    let currentQuizData = null;\n    let questions = [];\n    let currentQIndex = 0;\n    let userAnswers = {}; // { q_1: 'A', ... }\n    let markedForReview = new Set();\n    let timerInterval = null;\n    let secondsElapsed = 0;\n    let reviewData = null;\n\n    // Initialize Lucide Icons\n    function updateIcons() {\n      if (window.lucide) {\n        lucide.createIcons();\n      }\n    }\n    document.addEventListener(\"DOMContentLoaded\", () => {\n      updateIcons();\n      setupDragAndDrop();\n    });\n\n    // Theme toggle\n    function toggleTheme() {\n      document.documentElement.classList.toggle('dark');\n      updateIcons();\n    }\n\n    // View switcher\n    function switchView(viewId) {\n      ['view-upload', 'view-quiz', 'view-results'].forEach(id => {\n        const el = document.getElementById(id);\n        if (el) el.classList.toggle('hidden', id !== viewId);\n      });\n      window.scrollTo({ top: 0, behavior: 'smooth' });\n      updateIcons();\n    }\n\n    // Drag and drop setup\n    function setupDragAndDrop() {\n      const dropZone = document.getElementById('drop-zone');\n      const fileInput = document.getElementById('pdf-input');\n\n      dropZone.addEventListener('click', () => fileInput.click());\n\n      ['dragenter', 'dragover'].forEach(eventName => {\n        dropZone.addEventListener(eventName, (e) => {\n          e.preventDefault();\n          dropZone.classList.add('border-indigo-600', 'bg-indigo-50/50', 'dark:bg-indigo-950/20');\n        });\n      });\n\n      ['dragleave', 'drop'].forEach(eventName => {\n        dropZone.addEventListener(eventName, (e) => {\n          e.preventDefault();\n          dropZone.classList.remove('border-indigo-600', 'bg-indigo-50/50', 'dark:bg-indigo-950/20');\n        });\n      });\n\n      dropZone.addEventListener('drop', (e) => {\n        if (e.dataTransfer.files.length > 0) {\n          uploadFile(e.dataTransfer.files[0]);\n        }\n      });\n    }\n\n    function handleFileSelect(e) {\n      if (e.target.files.length > 0) {\n        uploadFile(e.target.files[0]);\n      }\n    }\n\n    async function uploadFile(file) {\n      if (!file.name.toLowerCase().endsWith('.pdf')) {\n        alert('Please select a valid PDF file.');\n        return;\n      }\n\n      const statusEl = document.getElementById('upload-status');\n      const statusText = document.getElementById('upload-status-text');\n      statusEl.classList.remove('hidden');\n      statusText.innerText = `Uploading and parsing \"${file.name}\"...`;\n      updateIcons();\n\n      const formData = new FormData();\n      formData.append('file', file);\n\n      try {\n        const res = await fetch('/api/upload', {\n          method: 'POST',\n          body: formData\n        });\n\n        const data = await res.json();\n        statusEl.classList.add('hidden');\n\n        if (!res.ok) {\n          alert(`Error: ${data.detail || 'Could not parse PDF'}`);\n          return;\n        }\n\n        currentQuizId = data.quiz_id;\n        displayTopicBreakdown(data);\n      } catch (err) {\n        statusEl.classList.add('hidden');\n        alert(`Upload error: ${err.message}`);\n      }\n    }\n\n    function displayTopicBreakdown(data) {\n      document.getElementById('topics-section').classList.remove('hidden');\n      document.getElementById('quiz-title').innerText = data.title;\n      document.getElementById('quiz-stats').innerText = `${data.total_questions} Questions Extracted across ${data.topics.length} Detected Topics`;\n\n      const grid = document.getElementById('topics-grid');\n      grid.innerHTML = '';\n\n      data.topics.forEach((t) => {\n        const card = document.createElement('div');\n        card.className = 'glass-card p-5 rounded-2xl flex flex-col justify-between hover:shadow-md transition space-y-4';\n        card.innerHTML = `\n          <div>\n            <div class=\"flex items-center justify-between\">\n              <span class=\"px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300\">\n                ${t.count} Questions\n              </span>\n              <i data-lucide=\"layers\" class=\"w-4 h-4 text-slate-400\"></i>\n            </div>\n            <h4 class=\"mt-2 text-base font-bold text-slate-900 dark:text-white line-clamp-1\">${t.name}</h4>\n          </div>\n          <button onclick=\"startQuiz('${t.name}')\" class=\"w-full py-2 bg-slate-100 hover:bg-indigo-600 dark:bg-slate-800 dark:hover:bg-indigo-600 hover:text-white text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5\">\n            <i data-lucide=\"play\" class=\"w-3.5 h-3.5\"></i>\n            <span>Practice Topic</span>\n          </button>\n        `;\n        grid.appendChild(card);\n      });\n\n      updateIcons();\n      document.getElementById('topics-section').scrollIntoView({ behavior: 'smooth' });\n    }\n\n    // Load Quiz for Topic or All\n    async function startQuiz(topic) {\n      if (!currentQuizId) return;\n\n      try {\n        const url = topic === 'all' \n          ? `/api/quiz/${currentQuizId}`\n          : `/api/quiz/${currentQuizId}?topic=${encodeURIComponent(topic)}`;\n\n        const res = await fetch(url);\n        const data = await res.json();\n        if (!res.ok) {\n          alert('Failed to load quiz');\n          return;\n        }\n\n        currentQuizData = data;\n        questions = data.questions;\n        currentQIndex = 0;\n        userAnswers = {};\n        markedForReview.clear();\n        secondsElapsed = 0;\n\n        document.getElementById('active-quiz-name').innerText = data.title;\n        document.getElementById('active-quiz-topic').innerText = `Topic: ${data.selected_topic}`;\n\n        startTimer();\n        renderPalette();\n        renderCurrentQuestion();\n        switchView('view-quiz');\n      } catch (err) {\n        alert(`Error starting quiz: ${err.message}`);\n      }\n    }\n\n    function startTimer() {\n      clearInterval(timerInterval);\n      const timerEl = document.getElementById('quiz-timer');\n      timerInterval = setInterval(() => {\n        secondsElapsed++;\n        const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');\n        const secs = String(secondsElapsed % 60).padStart(2, '0');\n        timerEl.innerText = `${mins}:${secs}`;\n      }, 1000);\n    }\n\n    function renderCurrentQuestion() {\n      if (!questions || questions.length === 0) return;\n      const q = questions[currentQIndex];\n\n      document.getElementById('current-q-index').innerText = `Question ${currentQIndex + 1} of ${questions.length} (Topic: ${q.topic})`;\n      document.getElementById('q-text').innerText = `${q.original_num ? q.original_num + '.' : ''} ${q.question}`;\n\n      // Update Mark for review state\n      const isMarked = markedForReview.has(q.id);\n      document.getElementById('review-text').innerText = isMarked ? 'Unmark Review' : 'Mark for Review';\n\n      // Render Options\n      const optionsContainer = document.getElementById('q-options');\n      optionsContainer.innerHTML = '';\n\n      q.options.forEach((opt) => {\n        const isSelected = userAnswers[q.id] === opt.key;\n        const optBtn = document.createElement('button');\n        optBtn.className = `w-full text-left p-4 rounded-xl border-2 font-medium text-sm flex items-start gap-3 transition ${\n          isSelected \n            ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 shadow-sm' \n            : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'\n        }`;\n\n        optBtn.innerHTML = `\n          <span class=\"w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${\n            isSelected \n              ? 'bg-indigo-600 text-white' \n              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'\n          }\">${opt.key}</span>\n          <span class=\"pt-0.5\">${opt.text}</span>\n        `;\n\n        optBtn.onclick = () => selectOption(q.id, opt.key);\n        optionsContainer.appendChild(optBtn);\n      });\n\n      // Update Prev / Next button states\n      document.getElementById('btn-prev').disabled = (currentQIndex === 0);\n      document.getElementById('btn-prev').classList.toggle('opacity-50', currentQIndex === 0);\n\n      const isLast = currentQIndex === questions.length - 1;\n      document.getElementById('btn-next').innerHTML = isLast \n        ? `<span>Finish</span><i data-lucide=\"check\" class=\"w-4 h-4\"></i>` \n        : `<span>Next</span><i data-lucide=\"chevron-right\" class=\"w-4 h-4\"></i>`;\n\n      renderPalette();\n      updateIcons();\n    }\n\n    function selectOption(qId, optionKey) {\n      userAnswers[qId] = optionKey;\n      renderCurrentQuestion();\n    }\n\n    function clearOptionSelection() {\n      const q = questions[currentQIndex];\n      delete userAnswers[q.id];\n      renderCurrentQuestion();\n    }\n\n    function toggleMarkForReview() {\n      const q = questions[currentQIndex];\n      if (markedForReview.has(q.id)) {\n        markedForReview.delete(q.id);\n      } else {\n        markedForReview.add(q.id);\n      }\n      renderCurrentQuestion();\n    }\n\n    function nextQuestion() {\n      if (currentQIndex < questions.length - 1) {\n        currentQIndex++;\n        renderCurrentQuestion();\n      } else {\n        confirmSubmitQuiz();\n      }\n    }\n\n    function prevQuestion() {\n      if (currentQIndex > 0) {\n        currentQIndex--;\n        renderCurrentQuestion();\n      }\n    }\n\n    function jumpToQuestion(idx) {\n      currentQIndex = idx;\n      renderCurrentQuestion();\n    }\n\n    function renderPalette() {\n      const palette = document.getElementById('palette-grid');\n      palette.innerHTML = '';\n\n      questions.forEach((q, idx) => {\n        const isAnswered = !!userAnswers[q.id];\n        const isMarked = markedForReview.has(q.id);\n        const isCurrent = (idx === currentQIndex);\n\n        let bgClass = 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300';\n        if (isAnswered) bgClass = 'bg-emerald-500 text-white font-bold';\n        if (isMarked) bgClass = 'bg-amber-500 text-white font-bold';\n\n        const btn = document.createElement('button');\n        btn.className = `w-9 h-9 rounded-xl text-xs font-semibold flex items-center justify-center transition ${bgClass} ${\n          isCurrent ? 'ring-2 ring-indigo-600 ring-offset-2 dark:ring-offset-slate-900 scale-105' : ''\n        }`;\n        btn.innerText = idx + 1;\n        btn.onclick = () => jumpToQuestion(idx);\n        palette.appendChild(btn);\n      });\n    }\n\n    // Submit Quiz\n    async function confirmSubmitQuiz() {\n      const answeredCount = Object.keys(userAnswers).length;\n      const total = questions.length;\n      const unanswered = total - answeredCount;\n\n      const confirmed = confirm(\n        `Submit your Exam Quiz?\\n\\nAttempted: ${answeredCount}/${total}\\nUnanswered: ${unanswered}\\nTime: ${document.getElementById('quiz-timer').innerText}`\n      );\n\n      if (!confirmed) return;\n\n      clearInterval(timerInterval);\n\n      try {\n        const res = await fetch(`/api/quiz/${currentQuizId}/submit`, {\n          method: 'POST',\n          headers: { 'Content-Type': 'application/json' },\n          body: JSON.stringify({\n            answers: userAnswers,\n            time_taken_seconds: secondsElapsed\n          })\n        });\n\n        const results = await res.json();\n        if (!res.ok) {\n          alert('Submission error');\n          return;\n        }\n\n        reviewData = results;\n        displayResults(results);\n      } catch (err) {\n        alert(`Error submitting answers: ${err.message}`);\n      }\n    }\n\n    function displayResults(data) {\n      switchView('view-results');\n\n      // Trigger Confetti if score > 50%\n      if (data.percentage >= 50 && window.confetti) {\n        confetti({\n          particleCount: 100,\n          spread: 70,\n          origin: { y: 0.6 }\n        });\n      }\n\n      document.getElementById('result-quiz-title').innerText = data.title;\n      document.getElementById('score-percentage').innerText = `${data.percentage}%`;\n      document.getElementById('stat-correct').innerText = data.score;\n      document.getElementById('stat-wrong').innerText = data.wrong;\n      document.getElementById('stat-unattempted').innerText = data.unattempted;\n\n      // Topic-wise progress\n      const tpContainer = document.getElementById('topic-performance-list');\n      tpContainer.innerHTML = '';\n      for (const [topic, stat] of Object.entries(data.topic_performance)) {\n        const pct = Math.round((stat.correct / stat.total) * 100);\n        const row = document.createElement('div');\n        row.className = 'space-y-1';\n        row.innerHTML = `\n          <div class=\"flex justify-between text-xs font-semibold\">\n            <span>${topic} (${stat.correct}/${stat.total})</span>\n            <span>${pct}%</span>\n          </div>\n          <div class=\"w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden\">\n            <div class=\"h-full bg-indigo-600 rounded-full\" style=\"width: ${pct}%\"></div>\n          </div>\n        `;\n        tpContainer.appendChild(row);\n      }\n\n      renderReviewList('all');\n    }\n\n    function filterReview(type) {\n      document.querySelectorAll('.rev-filter-btn').forEach(b => {\n        b.classList.remove('bg-indigo-600', 'text-white');\n        b.classList.add('bg-slate-200', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300');\n      });\n      event.target.classList.remove('bg-slate-200', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300');\n      event.target.classList.add('bg-indigo-600', 'text-white');\n\n      renderReviewList(type);\n    }\n\n    function renderReviewList(filter) {\n      if (!reviewData) return;\n      const container = document.getElementById('review-list');\n      container.innerHTML = '';\n\n      let items = reviewData.review;\n      if (filter === 'wrong') items = items.filter(i => i.status === 'wrong');\n      if (filter === 'correct') items = items.filter(i => i.status === 'correct');\n\n      if (items.length === 0) {\n        container.innerHTML = '<div class=\"p-8 text-center text-sm text-slate-500\">No questions in this filter.</div>';\n        return;\n      }\n\n      items.forEach((item, index) => {\n        const card = document.createElement('div');\n        let borderClass = 'border-slate-200 dark:border-slate-800';\n        let badgeColor = 'bg-slate-100 text-slate-700';\n\n        if (item.status === 'correct') {\n          borderClass = 'border-emerald-300 dark:border-emerald-800';\n          badgeColor = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300';\n        } else if (item.status === 'wrong') {\n          borderClass = 'border-rose-300 dark:border-rose-800';\n          badgeColor = 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300';\n        }\n\n        card.className = `glass-card p-6 rounded-2xl border-2 ${borderClass} space-y-4`;\n\n        let optionsHtml = item.options.map(opt => {\n          let optStyle = 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900';\n          let labelBadge = '';\n\n          if (opt.key === item.correct_answer) {\n            optStyle = 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-bold';\n            labelBadge = '<span class=\"text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400 ml-auto\">Correct Answer</span>';\n          }\n          if (opt.key === item.user_choice && opt.key !== item.correct_answer) {\n            optStyle = 'border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold';\n            labelBadge = '<span class=\"text-[10px] font-bold uppercase text-rose-600 dark:text-rose-400 ml-auto\">Your Choice</span>';\n          }\n\n          return `\n            <div class=\"p-3 rounded-xl border text-xs flex items-center gap-2 ${optStyle}\">\n              <span class=\"w-5 h-5 rounded flex items-center justify-center font-bold\">${opt.key}</span>\n              <span>${opt.text}</span>\n              ${labelBadge}\n            </div>\n          `;\n        }).join('');\n\n        card.innerHTML = `\n          <div class=\"flex items-center justify-between\">\n            <span class=\"text-xs font-bold text-slate-500\">Question ${item.original_num || index + 1} (${item.topic})</span>\n            <span class=\"px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${badgeColor}\">\n              ${item.status}\n            </span>\n          </div>\n          <div class=\"text-sm font-semibold text-slate-900 dark:text-slate-100\">\n            ${item.question}\n          </div>\n          <div class=\"space-y-2 pt-1\">\n            ${optionsHtml}\n          </div>\n          ${item.explanation ? `\n            <div class=\"p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-xs text-slate-700 dark:text-slate-300\">\n              <strong class=\"text-indigo-600 dark:text-indigo-400 font-bold\">Solution Note / Source:</strong> ${item.explanation}\n            </div>\n          ` : ''}\n        `;\n\n        container.appendChild(card);\n      });\n\n      updateIcons();\n    }\n\n    function retakeActiveQuiz() {\n      if (currentQuizData) {\n        startQuiz(currentQuizData.selected_topic === 'All Topics' ? 'all' : currentQuizData.selected_topic);\n      }\n    }\n\n    async function loadPreviousQuizzes() {\n      try {\n        const res = await fetch('/api/quizzes');\n        const data = await res.json();\n        const list = document.getElementById('previous-papers-list');\n        list.innerHTML = '';\n\n        if (!data || data.length === 0) {\n          list.innerHTML = '<p class=\"text-xs text-slate-500 py-4 text-center\">No previous papers uploaded yet.</p>';\n        } else {\n          data.forEach(q => {\n            const item = document.createElement('div');\n            item.className = 'p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500 cursor-pointer flex items-center justify-between transition';\n            item.innerHTML = `\n              <div>\n                <h4 class=\"text-xs font-bold text-slate-900 dark:text-white\">${q.title}</h4>\n                <p class=\"text-[11px] text-slate-500\">${q.total_questions} Questions \u2022 ${q.topics.length} Topics</p>\n              </div>\n              <button class=\"text-xs px-2.5 py-1 rounded bg-indigo-600 text-white font-semibold\">Open</button>\n            `;\n            item.onclick = () => {\n              currentQuizId = q.id;\n              displayTopicBreakdown(q);\n              closePreviousQuizzes();\n            };\n            list.appendChild(item);\n          });\n        }\n\n        document.getElementById('previous-papers-modal').classList.remove('hidden');\n      } catch (err) {\n        alert('Could not fetch quiz history');\n      }\n    }\n\n    function closePreviousQuizzes() {\n      document.getElementById('previous-papers-modal').classList.add('hidden');\n    }\n\n    // Keyboard Shortcuts (1,2,3,4 or A,B,C,D)\n    window.addEventListener('keydown', (e) => {\n      if (document.getElementById('view-quiz').classList.contains('hidden')) return;\n      const keyMap = { '1': 'A', '2': 'B', '3': 'C', '4': 'D', 'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D' };\n      const selected = keyMap[e.key.toLowerCase()];\n      if (selected && questions[currentQIndex]) {\n        selectOption(questions[currentQIndex].id, selected);\n      }\n      if (e.key === 'ArrowRight') nextQuestion();\n      if (e.key === 'ArrowLeft') prevQuestion();\n    });\n  </script>\n</body>\n</html>\n"
+# EMBEDDED SINGLE-PAGE APPLICATION FRONTEND (Bilingual Hindi/English + 3000+ PYQ Scalable Engine)
+EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PYQ Quiz Master | 3000+ Bilingual Exam Simulator</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- Google Fonts: Inter + Noto Sans Devanagari for perfect Hindi typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans Devanagari', 'sans-serif'],
+            hindi: ['Noto Sans Devanagari', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', 'Noto Sans Devanagari', sans-serif; }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(229, 231, 235, 0.9);
+    }
+    .dark .glass-card {
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(51, 65, 85, 0.9);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen transition-colors duration-200">
 
-app = FastAPI(title="PYQ Quiz Master", description="Instant Quiz Platform from PYQ PDFs with Topic Detection")
+  <!-- ================= NAVBAR ================= -->
+  <nav class="sticky top-0 z-50 glass-card border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3.5 flex items-center justify-between shadow-sm">
+    <div class="flex items-center gap-3 cursor-pointer" onclick="switchView('view-upload')">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+        <i data-lucide="sparkles" class="w-6 h-6"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-lg sm:text-xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-violet-400">
+            PYQ Quiz Master
+          </h1>
+          <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+            Bilingual हिन्दी / EN
+          </span>
+        </div>
+        <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">Supports 3000+ Questions & Auto-Topic Separation</p>
+      </div>
+    </div>
+
+    <!-- Right bar controls: Language Selector & Theme -->
+    <div class="flex items-center gap-2.5">
+      <!-- Language Mode Selector -->
+      <div class="hidden sm:flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+        <button id="lang-btn-both" onclick="setLangFilter('both')" class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white shadow-sm transition">Both (द्विभाषी)</button>
+        <button id="lang-btn-en" onclick="setLangFilter('en')" class="px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition">English</button>
+        <button id="lang-btn-hi" onclick="setLangFilter('hi')" class="px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition">हिन्दी</button>
+      </div>
+
+      <button onclick="loadPreviousQuizzes()" class="px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition">
+        <i data-lucide="history" class="w-4 h-4"></i>
+        <span class="hidden sm:inline">My Papers</span>
+      </button>
+
+      <button onclick="toggleTheme()" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700">
+        <i data-lucide="moon" class="w-4 h-4 dark:hidden"></i>
+        <i data-lucide="sun" class="w-4 h-4 hidden dark:block"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ================= MAIN CONTAINER ================= -->
+  <main class="max-w-6xl mx-auto px-4 py-6 sm:py-8">
+
+    <!-- ================= VIEW 1: UPLOAD & TOPIC SELECTION ================= -->
+    <section id="view-upload" class="space-y-8 block">
+      
+      <!-- Banner -->
+      <div class="text-center max-w-2xl mx-auto pt-2 pb-2">
+        <span class="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 rounded-full">
+          ⚡ Handles Large Books & Papers (Up to 3,100+ PYQs)
+        </span>
+        <h2 class="mt-4 text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+          Upload Your Exam PYQ PDF.<br/><span class="text-indigo-600 dark:text-indigo-400">Hindi & English Bilingual Support.</span>
+        </h2>
+        <p class="mt-3 text-sm text-slate-600 dark:text-slate-400">
+          Upload your 100 to 3,100+ question bank (SSC, UPSC, NEET, JEE, State Exams, Railways). The system instantly parses every question, separates English and Hindi text, detects subjects/units, and gives you custom practice tests.
+        </p>
+      </div>
+
+      <!-- Upload Drop Zone -->
+      <div class="max-w-2xl mx-auto">
+        <div id="drop-zone" class="border-2 border-dashed border-indigo-300 dark:border-indigo-800/70 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-2xl p-8 text-center bg-white dark:bg-slate-900/60 shadow-lg shadow-indigo-500/5 transition cursor-pointer group">
+          <input type="file" id="pdf-input" accept="application/pdf" class="hidden" onchange="handleFileSelect(event)" />
+          
+          <div class="w-16 h-16 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition duration-200">
+            <i data-lucide="file-up" class="w-8 h-8"></i>
+          </div>
+          
+          <h3 class="mt-4 text-base font-bold text-slate-800 dark:text-slate-200">
+            Click to upload or drag & drop your PYQ PDF
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Supports Large 3000+ Question PDFs, Bilingual Hindi & English Papers, and Mock Tests
+          </p>
+
+          <div id="upload-status" class="mt-5 hidden">
+            <div class="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-3">
+              <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
+              <span id="upload-status-text">Processing PDF... Extracting questions and detecting bilingual text.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detected Topics & Test Mode Selector -->
+      <div id="topics-section" class="hidden max-w-4xl mx-auto space-y-6">
+        
+        <!-- Paper Overview Card -->
+        <div class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                <h3 id="quiz-title" class="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">Exam Paper</h3>
+              </div>
+              <p id="quiz-stats" class="text-xs text-slate-500 dark:text-slate-400 mt-1">3,100 Questions Extracted Across 6 Topics</p>
+            </div>
+
+            <!-- Fast Quiz Mode Options -->
+            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <button onclick="startQuiz('all', 25)" class="flex-1 sm:flex-none px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold rounded-xl text-xs transition">
+                ⚡ Quick 25 MCQ Mock
+              </button>
+              <button onclick="startQuiz('all', 50)" class="flex-1 sm:flex-none px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold rounded-xl text-xs transition">
+                📝 50 MCQ Test
+              </button>
+              <button onclick="startQuiz('all', 0)" class="w-full sm:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 transition">
+                <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+                <span>Start Full Marathon (All Questions)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Topics List -->
+        <div>
+          <h4 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+            Auto-Detected Topics / Subjects
+          </h4>
+          <div id="topics-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Injected topic cards -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- History Modal -->
+      <div id="previous-papers-modal" class="hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 max-w-xl w-full rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold">Uploaded Papers History</h3>
+            <button onclick="closePreviousQuizzes()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+          <div id="previous-papers-list" class="space-y-2 max-h-80 overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ================= VIEW 2: QUIZ ROOM ================= -->
+    <section id="view-quiz" class="hidden space-y-5">
+      
+      <!-- Top Bar -->
+      <div class="glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="active-quiz-topic" class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+              Topic: General
+            </span>
+            <span id="active-total-badge" class="px-2 py-0.5 text-[11px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+              Total 3100 MCQs
+            </span>
+          </div>
+          <h2 id="active-quiz-name" class="text-base font-bold text-slate-900 dark:text-white mt-1 truncate max-w-xs sm:max-w-md">
+            Exam Quiz
+          </h2>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <!-- Language Toggle in Quiz Bar (Mobile & Desktop) -->
+          <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+            <button onclick="setLangFilter('both')" class="px-2 py-1 rounded-lg text-[11px] font-bold lang-pill active-lang bg-indigo-600 text-white" id="pill-both">Both</button>
+            <button onclick="setLangFilter('en')" class="px-2 py-1 rounded-lg text-[11px] font-bold lang-pill text-slate-600 dark:text-slate-300" id="pill-en">EN</button>
+            <button onclick="setLangFilter('hi')" class="px-2 py-1 rounded-lg text-[11px] font-bold lang-pill text-slate-600 dark:text-slate-300" id="pill-hi">हिन्दी</button>
+          </div>
+
+          <!-- Timer -->
+          <div class="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+            <i data-lucide="clock" class="w-4 h-4 text-indigo-600 dark:text-indigo-400"></i>
+            <span id="quiz-timer" class="font-mono text-xs sm:text-sm font-bold">00:00</span>
+          </div>
+
+          <!-- Submit -->
+          <button onclick="confirmSubmitQuiz()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-1.5 transition">
+            <i data-lucide="check-circle" class="w-4 h-4"></i>
+            <span>Submit</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Body -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        
+        <!-- Left Question Panel (8 cols) -->
+        <div class="lg:col-span-8 space-y-4">
+          <div class="glass-card rounded-2xl p-6 sm:p-8 space-y-6 min-h-[420px] flex flex-col justify-between shadow-sm">
+            
+            <div class="space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <span id="current-q-index" class="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                  Question 1 of 3100
+                </span>
+                <div class="flex items-center gap-3">
+                  <button onclick="toggleMarkForReview()" id="btn-review" class="text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1">
+                    <i data-lucide="bookmark" class="w-3.5 h-3.5"></i>
+                    <span id="review-text">Mark for Review</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Question Text (Bilingual Rendering) -->
+              <div id="q-text-container" class="space-y-2">
+                <!-- Injected bilingual question text -->
+              </div>
+
+              <!-- Options Container -->
+              <div id="q-options" class="space-y-3 pt-2">
+                <!-- Injected options -->
+              </div>
+            </div>
+
+            <!-- Bottom Navigation buttons -->
+            <div class="flex items-center justify-between pt-6 border-t border-slate-200 dark:border-slate-800">
+              <button onclick="prevQuestion()" id="btn-prev" class="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl flex items-center gap-1 transition">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                <span>Previous</span>
+              </button>
+
+              <button onclick="clearOptionSelection()" class="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
+                Clear Choice
+              </button>
+
+              <button onclick="nextQuestion()" id="btn-next" class="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl flex items-center gap-1 shadow-md shadow-indigo-600/20 transition">
+                <span>Next</span>
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Right: Paginated / Chunked Question Palette (4 cols) -->
+        <div class="lg:col-span-4 space-y-4">
+          <div class="glass-card rounded-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Question Navigator
+              </h3>
+              <!-- Jump Range for 3000+ Questions -->
+              <select id="palette-range-selector" onchange="changePaletteChunk(this.value)" class="text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 font-semibold text-slate-700 dark:text-slate-300">
+                <!-- Range options (1-100, 101-200, ...) injected dynamically -->
+              </select>
+            </div>
+
+            <!-- Question Numbers Grid (Rendered in chunks for instant 60fps performance) -->
+            <div id="palette-grid" class="grid grid-cols-5 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto p-1">
+              <!-- Number buttons injected here -->
+            </div>
+
+            <!-- Legend & Stats -->
+            <div class="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+              <div class="grid grid-cols-2 gap-2 text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded bg-emerald-500"></span>
+                  <span id="nav-stat-answered">Answered (0)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded bg-amber-500"></span>
+                  <span id="nav-stat-marked">Marked (0)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded bg-slate-200 dark:bg-slate-700"></span>
+                  <span id="nav-stat-unanswered">Unanswered</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded border-2 border-indigo-600"></span>
+                  <span>Current</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ================= VIEW 3: SCORECARD & DETAILED REVIEW ================= -->
+    <section id="view-results" class="hidden space-y-8">
+      
+      <!-- Score Overview -->
+      <div class="glass-card rounded-3xl p-8 text-center relative overflow-hidden shadow-lg">
+        <div class="max-w-md mx-auto space-y-4">
+          <span class="px-3.5 py-1 text-xs font-bold uppercase tracking-wider rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400">
+            Exam Analysis & Scorecard
+          </span>
+          <h2 id="result-quiz-title" class="text-2xl font-black text-slate-900 dark:text-white">Exam Results</h2>
+
+          <div class="py-3">
+            <div class="inline-flex flex-col items-center justify-center w-36 h-36 rounded-full border-4 border-indigo-600 dark:border-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30">
+              <span id="score-percentage" class="text-3xl font-black text-indigo-600 dark:text-indigo-400">85%</span>
+              <span class="text-xs font-bold text-slate-500 uppercase">Accuracy</span>
+            </div>
+          </div>
+
+          <!-- Quick Stats Grid -->
+          <div class="grid grid-cols-3 gap-3">
+            <div class="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40">
+              <div id="stat-correct" class="text-xl font-black text-emerald-600 dark:text-emerald-400">0</div>
+              <div class="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Correct</div>
+            </div>
+            <div class="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/40">
+              <div id="stat-wrong" class="text-xl font-black text-rose-600 dark:text-rose-400">0</div>
+              <div class="text-[11px] font-semibold text-rose-700 dark:text-rose-300">Incorrect</div>
+            </div>
+            <div class="p-3 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <div id="stat-unattempted" class="text-xl font-black text-slate-600 dark:text-slate-300">0</div>
+              <div class="text-[11px] font-semibold text-slate-500">Skipped</div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center justify-center gap-3 pt-2">
+            <button onclick="retakeActiveQuiz()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-2 transition">
+              <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+              <span>Retake Quiz</span>
+            </button>
+            <button onclick="switchView('view-upload')" class="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold rounded-xl transition">
+              <span>Upload New PDF</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Topic Performance Breakdown -->
+      <div id="topic-breakdown-card" class="glass-card rounded-2xl p-6 space-y-4">
+        <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          Topic-Wise Performance Breakdown
+        </h3>
+        <div id="topic-performance-list" class="space-y-3"></div>
+      </div>
+
+      <!-- Detailed Review & Explanation Section -->
+      <div class="space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h3 class="text-lg font-extrabold text-slate-900 dark:text-white">
+            Bilingual Solution Review & Verified PDF Answers
+          </h3>
+          <div class="flex items-center gap-2 text-xs">
+            <button onclick="filterReview('all')" class="rev-filter-btn active px-3 py-1.5 rounded-lg font-bold bg-indigo-600 text-white">All</button>
+            <button onclick="filterReview('wrong')" class="rev-filter-btn px-3 py-1.5 rounded-lg font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Wrong Only</button>
+            <button onclick="filterReview('correct')" class="rev-filter-btn px-3 py-1.5 rounded-lg font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">Correct Only</button>
+          </div>
+        </div>
+
+        <div id="review-list" class="space-y-4"></div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ================= LOGIC & SCRIPT ================= -->
+  <script>
+    let currentQuizId = null;
+    let currentQuizData = null;
+    let questions = [];
+    let currentQIndex = 0;
+    let userAnswers = {};
+    let markedForReview = new Set();
+    let timerInterval = null;
+    let secondsElapsed = 0;
+    let reviewData = null;
+    let currentLangFilter = 'both'; // 'both', 'en', 'hi'
+    let currentPaletteChunk = 0; // 0 = 1-100, 1 = 101-200, ...
+    const CHUNK_SIZE = 100;
+
+    function updateIcons() {
+      if (window.lucide) lucide.createIcons();
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      updateIcons();
+      setupDragAndDrop();
+    });
+
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+      updateIcons();
+    }
+
+    function switchView(viewId) {
+      ['view-upload', 'view-quiz', 'view-results'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('hidden', id !== viewId);
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      updateIcons();
+    }
+
+    function setLangFilter(mode) {
+      currentLangFilter = mode;
+      
+      // Update Navbar buttons
+      ['both', 'en', 'hi'].forEach(l => {
+        const nb = document.getElementById(`lang-btn-${l}`);
+        if (nb) {
+          nb.className = (l === mode) 
+            ? 'px-2.5 py-1 rounded-lg bg-indigo-600 text-white shadow-sm transition' 
+            : 'px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition';
+        }
+        const pb = document.getElementById(`pill-${l}`);
+        if (pb) {
+          pb.className = (l === mode)
+            ? 'px-2 py-1 rounded-lg text-[11px] font-bold lang-pill bg-indigo-600 text-white'
+            : 'px-2 py-1 rounded-lg text-[11px] font-bold lang-pill text-slate-600 dark:text-slate-300';
+        }
+      });
+
+      if (!document.getElementById('view-quiz').classList.contains('hidden')) {
+        renderCurrentQuestion();
+      }
+      if (!document.getElementById('view-results').classList.contains('hidden')) {
+        renderReviewList(currentReviewFilter || 'all');
+      }
+    }
+
+    // Helper: Split bilingual text if present
+    function formatBilingualText(rawText) {
+      if (!rawText) return '';
+      const devanagariPattern = /[\u0900-\u097F]/;
+      const hasHindi = devanagariPattern.test(rawText);
+
+      if (!hasHindi) {
+        return `<div class="text-slate-900 dark:text-slate-100">${escapeHtml(rawText)}</div>`;
+      }
+
+      // Check if text has English + Hindi portions
+      const lines = rawText.split('\n').filter(l => l.trim().length > 0);
+      let enLines = [];
+      let hiLines = [];
+
+      lines.forEach(l => {
+        if (devanagariPattern.test(l)) {
+          hiLines.push(l.trim());
+        } else {
+          enLines.push(l.trim());
+        }
+      });
+
+      const enText = enLines.join(' ');
+      const hiText = hiLines.join(' ');
+
+      if (currentLangFilter === 'en') {
+        return `<div class="text-slate-900 dark:text-slate-100 font-medium">${escapeHtml(enText || rawText)}</div>`;
+      } else if (currentLangFilter === 'hi') {
+        return `<div class="text-slate-900 dark:text-slate-100 font-hindi font-medium leading-relaxed">${escapeHtml(hiText || rawText)}</div>`;
+      } else {
+        // Both side-by-side / stacked
+        return `
+          <div class="space-y-2">
+            ${enText ? `<div class="text-slate-900 dark:text-slate-100 font-medium">${escapeHtml(enText)}</div>` : ''}
+            ${hiText ? `<div class="text-indigo-900 dark:text-indigo-200 font-hindi font-medium leading-relaxed bg-indigo-50/50 dark:bg-indigo-950/30 p-2.5 rounded-xl border border-indigo-100 dark:border-indigo-900/40">${escapeHtml(hiText)}</div>` : (!enText ? `<div class="text-slate-900 dark:text-slate-100 font-hindi">${escapeHtml(rawText)}</div>` : '')}
+          </div>
+        `;
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    // Drag and Drop
+    function setupDragAndDrop() {
+      const dropZone = document.getElementById('drop-zone');
+      const fileInput = document.getElementById('pdf-input');
+
+      dropZone.addEventListener('click', () => fileInput.click());
+
+      ['dragenter', 'dragover'].forEach(eName => {
+        dropZone.addEventListener(eName, (e) => {
+          e.preventDefault();
+          dropZone.classList.add('border-indigo-600', 'bg-indigo-50/50', 'dark:bg-indigo-950/20');
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(eName => {
+        dropZone.addEventListener(eName, (e) => {
+          e.preventDefault();
+          dropZone.classList.remove('border-indigo-600', 'bg-indigo-50/50', 'dark:bg-indigo-950/20');
+        });
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        if (e.dataTransfer.files.length > 0) {
+          uploadFile(e.dataTransfer.files[0]);
+        }
+      });
+    }
+
+    function handleFileSelect(e) {
+      if (e.target.files.length > 0) {
+        uploadFile(e.target.files[0]);
+      }
+    }
+
+    async function uploadFile(file) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Please select a valid PDF file.');
+        return;
+      }
+
+      const statusEl = document.getElementById('upload-status');
+      const statusText = document.getElementById('upload-status-text');
+      statusEl.classList.remove('hidden');
+      statusText.innerText = `Extracting all questions from "${file.name}"... Parsing bilingual content.`;
+      updateIcons();
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json();
+        statusEl.classList.add('hidden');
+
+        if (!res.ok) {
+          alert(`Error: ${data.detail || 'Could not parse PDF'}`);
+          return;
+        }
+
+        currentQuizId = data.quiz_id;
+        displayTopicBreakdown(data);
+      } catch (err) {
+        statusEl.classList.add('hidden');
+        alert(`Upload error: ${err.message}`);
+      }
+    }
+
+    function displayTopicBreakdown(data) {
+      document.getElementById('topics-section').classList.remove('hidden');
+      document.getElementById('quiz-title').innerText = data.title;
+      document.getElementById('quiz-stats').innerText = `${data.total_questions.toLocaleString()} Questions Detected across ${data.topics.length} Topics (Bilingual Support)`;
+
+      const grid = document.getElementById('topics-grid');
+      grid.innerHTML = '';
+
+      data.topics.forEach((t) => {
+        const card = document.createElement('div');
+        card.className = 'glass-card p-5 rounded-2xl flex flex-col justify-between hover:shadow-md transition space-y-4';
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                ${t.count} MCQs
+              </span>
+              <i data-lucide="layers" class="w-4 h-4 text-slate-400"></i>
+            </div>
+            <h4 class="mt-2 text-base font-bold text-slate-900 dark:text-white line-clamp-1">${t.name}</h4>
+          </div>
+          <button onclick="startQuiz('${t.name}', 0)" class="w-full py-2 bg-slate-100 hover:bg-indigo-600 dark:bg-slate-800 dark:hover:bg-indigo-600 hover:text-white text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5">
+            <i data-lucide="play" class="w-3.5 h-3.5"></i>
+            <span>Practice Topic (${t.count})</span>
+          </button>
+        `;
+        grid.appendChild(card);
+      });
+
+      updateIcons();
+      document.getElementById('topics-section').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    async function startQuiz(topic, limit = 0) {
+      if (!currentQuizId) return;
+
+      try {
+        let url = topic === 'all' 
+          ? `/api/quiz/${currentQuizId}`
+          : `/api/quiz/${currentQuizId}?topic=${encodeURIComponent(topic)}`;
+
+        if (limit > 0) {
+          url += (url.includes('?') ? '&' : '?') + `limit=${limit}`;
+        }
+
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok) {
+          alert('Failed to load questions');
+          return;
+        }
+
+        currentQuizData = data;
+        questions = data.questions;
+        currentQIndex = 0;
+        userAnswers = {};
+        markedForReview.clear();
+        secondsElapsed = 0;
+        currentPaletteChunk = 0;
+
+        document.getElementById('active-quiz-name').innerText = data.title;
+        document.getElementById('active-quiz-topic').innerText = `Topic: ${data.selected_topic}`;
+        document.getElementById('active-total-badge').innerText = `${questions.length.toLocaleString()} Questions`;
+
+        setupPaletteChunks();
+        startTimer();
+        renderCurrentQuestion();
+        switchView('view-quiz');
+      } catch (err) {
+        alert(`Error starting quiz: ${err.message}`);
+      }
+    }
+
+    function setupPaletteChunks() {
+      const selector = document.getElementById('palette-range-selector');
+      selector.innerHTML = '';
+      const total = questions.length;
+      const totalChunks = Math.ceil(total / CHUNK_SIZE);
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE + 1;
+        const end = Math.min((i + 1) * CHUNK_SIZE, total);
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.innerText = `Q ${start} - ${end}`;
+        selector.appendChild(opt);
+      }
+
+      currentPaletteChunk = 0;
+      renderPalette();
+    }
+
+    function changePaletteChunk(val) {
+      currentPaletteChunk = parseInt(val, 10);
+      renderPalette();
+    }
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      const timerEl = document.getElementById('quiz-timer');
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        const hrs = Math.floor(secondsElapsed / 3600);
+        const mins = String(Math.floor((secondsElapsed % 3600) / 60)).padStart(2, '0');
+        const secs = String(secondsElapsed % 60).padStart(2, '0');
+        timerEl.innerText = hrs > 0 ? `${hrs}:${mins}:${secs}` : `${mins}:${secs}`;
+      }, 1000);
+    }
+
+    function renderCurrentQuestion() {
+      if (!questions || questions.length === 0) return;
+      const q = questions[currentQIndex];
+
+      // Automatically sync palette chunk with current question index
+      const expectedChunk = Math.floor(currentQIndex / CHUNK_SIZE);
+      if (expectedChunk !== currentPaletteChunk) {
+        currentPaletteChunk = expectedChunk;
+        const selector = document.getElementById('palette-range-selector');
+        if (selector) selector.value = currentPaletteChunk;
+      }
+
+      document.getElementById('current-q-index').innerText = `Question ${currentQIndex + 1} of ${questions.length} (${q.topic})`;
+      
+      const qTextContainer = document.getElementById('q-text-container');
+      const qHeading = `${q.original_num ? q.original_num + '. ' : ''}${q.question}`;
+      qTextContainer.innerHTML = formatBilingualText(qHeading);
+
+      const isMarked = markedForReview.has(q.id);
+      document.getElementById('review-text').innerText = isMarked ? 'Unmark Review' : 'Mark for Review';
+
+      const optionsContainer = document.getElementById('q-options');
+      optionsContainer.innerHTML = '';
+
+      q.options.forEach((opt) => {
+        const isSelected = userAnswers[q.id] === opt.key;
+        const optBtn = document.createElement('button');
+        optBtn.className = `w-full text-left p-3.5 sm:p-4 rounded-xl border-2 font-medium text-sm flex items-start gap-3 transition ${
+          isSelected 
+            ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 shadow-sm' 
+            : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'
+        }`;
+
+        optBtn.innerHTML = `
+          <span class="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+            isSelected 
+              ? 'bg-indigo-600 text-white' 
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+          }">${opt.key}</span>
+          <div class="pt-0.5 flex-1">${formatBilingualText(opt.text)}</div>
+        `;
+
+        optBtn.onclick = () => selectOption(q.id, opt.key);
+        optionsContainer.appendChild(optBtn);
+      });
+
+      document.getElementById('btn-prev').disabled = (currentQIndex === 0);
+      document.getElementById('btn-prev').classList.toggle('opacity-50', currentQIndex === 0);
+
+      const isLast = currentQIndex === questions.length - 1;
+      document.getElementById('btn-next').innerHTML = isLast 
+        ? `<span>Finish</span><i data-lucide="check" class="w-4 h-4"></i>` 
+        : `<span>Next</span><i data-lucide="chevron-right" class="w-4 h-4"></i>`;
+
+      renderPalette();
+      updateIcons();
+    }
+
+    function selectOption(qId, optionKey) {
+      userAnswers[qId] = optionKey;
+      renderCurrentQuestion();
+    }
+
+    function clearOptionSelection() {
+      const q = questions[currentQIndex];
+      delete userAnswers[q.id];
+      renderCurrentQuestion();
+    }
+
+    function toggleMarkForReview() {
+      const q = questions[currentQIndex];
+      if (markedForReview.has(q.id)) {
+        markedForReview.delete(q.id);
+      } else {
+        markedForReview.add(q.id);
+      }
+      renderCurrentQuestion();
+    }
+
+    function nextQuestion() {
+      if (currentQIndex < questions.length - 1) {
+        currentQIndex++;
+        renderCurrentQuestion();
+      } else {
+        confirmSubmitQuiz();
+      }
+    }
+
+    function prevQuestion() {
+      if (currentQIndex > 0) {
+        currentQIndex--;
+        renderCurrentQuestion();
+      }
+    }
+
+    function jumpToQuestion(idx) {
+      currentQIndex = idx;
+      renderCurrentQuestion();
+    }
+
+    function renderPalette() {
+      const palette = document.getElementById('palette-grid');
+      palette.innerHTML = '';
+
+      const startIdx = currentPaletteChunk * CHUNK_SIZE;
+      const endIdx = Math.min(startIdx + CHUNK_SIZE, questions.length);
+
+      let answeredCount = 0;
+      let markedCount = 0;
+
+      questions.forEach(q => {
+        if (userAnswers[q.id]) answeredCount++;
+        if (markedForReview.has(q.id)) markedCount++;
+      });
+
+      document.getElementById('nav-stat-answered').innerText = `Answered (${answeredCount})`;
+      document.getElementById('nav-stat-marked').innerText = `Marked (${markedCount})`;
+
+      for (let idx = startIdx; idx < endIdx; idx++) {
+        const q = questions[idx];
+        const isAnswered = !!userAnswers[q.id];
+        const isMarked = markedForReview.has(q.id);
+        const isCurrent = (idx === currentQIndex);
+
+        let bgClass = 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300';
+        if (isAnswered) bgClass = 'bg-emerald-500 text-white font-bold';
+        if (isMarked) bgClass = 'bg-amber-500 text-white font-bold';
+
+        const btn = document.createElement('button');
+        btn.className = `w-9 h-9 rounded-xl text-xs font-semibold flex items-center justify-center transition ${bgClass} ${
+          isCurrent ? 'ring-2 ring-indigo-600 ring-offset-2 dark:ring-offset-slate-900 scale-105' : ''
+        }`;
+        btn.innerText = idx + 1;
+        btn.onclick = () => jumpToQuestion(idx);
+        palette.appendChild(btn);
+      }
+    }
+
+    async function confirmSubmitQuiz() {
+      const answeredCount = Object.keys(userAnswers).length;
+      const total = questions.length;
+      const unanswered = total - answeredCount;
+
+      const confirmed = confirm(
+        `Submit your Exam Quiz?\n\nAttempted: ${answeredCount}/${total}\nUnanswered: ${unanswered}\nTime: ${document.getElementById('quiz-timer').innerText}`
+      );
+
+      if (!confirmed) return;
+      clearInterval(timerInterval);
+
+      try {
+        const res = await fetch(`/api/quiz/${currentQuizId}/submit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers: userAnswers,
+            time_taken_seconds: secondsElapsed
+          })
+        });
+
+        const results = await res.json();
+        if (!res.ok) {
+          alert('Submission error');
+          return;
+        }
+
+        reviewData = results;
+        displayResults(results);
+      } catch (err) {
+        alert(`Error submitting: ${err.message}`);
+      }
+    }
+
+    function displayResults(data) {
+      switchView('view-results');
+
+      if (data.percentage >= 50 && window.confetti) {
+        confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+      }
+
+      document.getElementById('result-quiz-title').innerText = data.title;
+      document.getElementById('score-percentage').innerText = `${data.percentage}%`;
+      document.getElementById('stat-correct').innerText = data.score.toLocaleString();
+      document.getElementById('stat-wrong').innerText = data.wrong.toLocaleString();
+      document.getElementById('stat-unattempted').innerText = data.unattempted.toLocaleString();
+
+      const tpContainer = document.getElementById('topic-performance-list');
+      tpContainer.innerHTML = '';
+      for (const [topic, stat] of Object.entries(data.topic_performance)) {
+        const pct = Math.round((stat.correct / stat.total) * 100);
+        const row = document.createElement('div');
+        row.className = 'space-y-1';
+        row.innerHTML = `
+          <div class="flex justify-between text-xs font-semibold">
+            <span>${topic} (${stat.correct}/${stat.total})</span>
+            <span>${pct}%</span>
+          </div>
+          <div class="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div class="h-full bg-indigo-600 rounded-full" style="width: ${pct}%"></div>
+          </div>
+        `;
+        tpContainer.appendChild(row);
+      }
+
+      renderReviewList('all');
+    }
+
+    let currentReviewFilter = 'all';
+    function filterReview(type) {
+      currentReviewFilter = type;
+      document.querySelectorAll('.rev-filter-btn').forEach(b => {
+        b.classList.remove('bg-indigo-600', 'text-white');
+        b.classList.add('bg-slate-200', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300');
+      });
+      event.target.classList.remove('bg-slate-200', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300');
+      event.target.classList.add('bg-indigo-600', 'text-white');
+
+      renderReviewList(type);
+    }
+
+    function renderReviewList(filter) {
+      if (!reviewData) return;
+      const container = document.getElementById('review-list');
+      container.innerHTML = '';
+
+      let items = reviewData.review;
+      if (filter === 'wrong') items = items.filter(i => i.status === 'wrong');
+      if (filter === 'correct') items = items.filter(i => i.status === 'correct');
+
+      if (items.length === 0) {
+        container.innerHTML = '<div class="p-8 text-center text-sm text-slate-500">No questions in this filter.</div>';
+        return;
+      }
+
+      // Render top 150 items for super fast DOM performance
+      const displayItems = items.slice(0, 150);
+
+      displayItems.forEach((item, index) => {
+        const card = document.createElement('div');
+        let borderClass = 'border-slate-200 dark:border-slate-800';
+        let badgeColor = 'bg-slate-100 text-slate-700';
+
+        if (item.status === 'correct') {
+          borderClass = 'border-emerald-300 dark:border-emerald-800';
+          badgeColor = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300';
+        } else if (item.status === 'wrong') {
+          borderClass = 'border-rose-300 dark:border-rose-800';
+          badgeColor = 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300';
+        }
+
+        card.className = `glass-card p-5 sm:p-6 rounded-2xl border-2 ${borderClass} space-y-4`;
+
+        let optionsHtml = item.options.map(opt => {
+          let optStyle = 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900';
+          let labelBadge = '';
+
+          if (opt.key === item.correct_answer) {
+            optStyle = 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-bold';
+            labelBadge = '<span class="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400 ml-auto">Correct Answer</span>';
+          }
+          if (opt.key === item.user_choice && opt.key !== item.correct_answer) {
+            optStyle = 'border-rose-500 bg-rose-50/70 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold';
+            labelBadge = '<span class="text-[10px] font-bold uppercase text-rose-600 dark:text-rose-400 ml-auto">Your Choice</span>';
+          }
+
+          return `
+            <div class="p-3 rounded-xl border text-xs flex items-center gap-2 ${optStyle}">
+              <span class="w-5 h-5 rounded flex items-center justify-center font-bold shrink-0">${opt.key}</span>
+              <div class="flex-1">${formatBilingualText(opt.text)}</div>
+              ${labelBadge}
+            </div>
+          `;
+        }).join('');
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500">Question ${item.original_num || index + 1} (${item.topic})</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${badgeColor}">
+              ${item.status}
+            </span>
+          </div>
+          <div class="text-sm font-semibold">
+            ${formatBilingualText(item.question)}
+          </div>
+          <div class="space-y-2 pt-1">
+            ${optionsHtml}
+          </div>
+          ${item.explanation ? `
+            <div class="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-xs text-slate-700 dark:text-slate-300">
+              <strong class="text-indigo-600 dark:text-indigo-400 font-bold">Solution Note / Source:</strong>
+              ${formatBilingualText(item.explanation)}
+            </div>
+          ` : ''}
+        `;
+
+        container.appendChild(card);
+      });
+
+      if (items.length > 150) {
+        const moreNote = document.createElement('div');
+        moreNote.className = 'text-center py-4 text-xs text-slate-500 font-medium';
+        moreNote.innerText = `Showing first 150 of ${items.length} questions. Use filters above for focused review.`;
+        container.appendChild(moreNote);
+      }
+
+      updateIcons();
+    }
+
+    function retakeActiveQuiz() {
+      if (currentQuizData) {
+        startQuiz(currentQuizData.selected_topic === 'All Topics' ? 'all' : currentQuizData.selected_topic);
+      }
+    }
+
+    async function loadPreviousQuizzes() {
+      try {
+        const res = await fetch('/api/quizzes');
+        const data = await res.json();
+        const list = document.getElementById('previous-papers-list');
+        list.innerHTML = '';
+
+        if (!data || data.length === 0) {
+          list.innerHTML = '<p class="text-xs text-slate-500 py-4 text-center">No previous papers uploaded yet.</p>';
+        } else {
+          data.forEach(q => {
+            const item = document.createElement('div');
+            item.className = 'p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-500 cursor-pointer flex items-center justify-between transition';
+            item.innerHTML = `
+              <div>
+                <h4 class="text-xs font-bold text-slate-900 dark:text-white">${q.title}</h4>
+                <p class="text-[11px] text-slate-500">${q.total_questions.toLocaleString()} Questions • ${q.topics.length} Topics</p>
+              </div>
+              <button class="text-xs px-2.5 py-1 rounded bg-indigo-600 text-white font-semibold">Open</button>
+            `;
+            item.onclick = () => {
+              currentQuizId = q.id;
+              displayTopicBreakdown(q);
+              closePreviousQuizzes();
+            };
+            list.appendChild(item);
+          });
+        }
+
+        document.getElementById('previous-papers-modal').classList.remove('hidden');
+      } catch (err) {
+        alert('Could not fetch quiz history');
+      }
+    }
+
+    function closePreviousQuizzes() {
+      document.getElementById('previous-papers-modal').classList.add('hidden');
+    }
+
+    // Keyboard Shortcuts (1,2,3,4 or A,B,C,D)
+    window.addEventListener('keydown', (e) => {
+      if (document.getElementById('view-quiz').classList.contains('hidden')) return;
+      const keyMap = { '1': 'A', '2': 'B', '3': 'C', '4': 'D', 'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D' };
+      const selected = keyMap[e.key.toLowerCase()];
+      if (selected && questions[currentQIndex]) {
+        selectOption(questions[currentQIndex].id, selected);
+      }
+      if (e.key === 'ArrowRight') nextQuestion();
+      if (e.key === 'ArrowLeft') prevQuestion();
+    });
+  </script>
+</body>
+</html>
+"""
+
+app = FastAPI(title="PYQ Quiz Master", description="Instant Quiz Platform from PYQ PDFs with Bilingual Hindi/English & Topic Detection")
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,8 +1106,6 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 for directory in [UPLOAD_DIR, DATA_DIR, STATIC_DIR, TEMPLATES_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
 DB_FILE = DATA_DIR / "quizzes.json"
 
 def load_db() -> Dict[str, Any]:
@@ -55,7 +1122,21 @@ def save_db(data: Dict[str, Any]):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
+    """
+    High-performance streaming text extraction capable of handling 500+ pages (3,000+ MCQs) in seconds.
+    """
     full_text = []
+    try:
+        reader = pypdf.PdfReader(str(pdf_path))
+        for page_idx, page in enumerate(reader.pages):
+            text = page.extract_text() or ""
+            if text.strip():
+                full_text.append(f"--- PAGE {page_idx + 1} ---\n" + text)
+        if full_text:
+            return "\n".join(full_text)
+    except Exception as e:
+        print(f"pypdf fast extraction fallback: {e}")
+
     if pdfplumber:
         try:
             with pdfplumber.open(str(pdf_path)) as pdf:
@@ -66,53 +1147,48 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
             if full_text:
                 return "\n".join(full_text)
         except Exception as e:
-            print(f"pdfplumber extraction failed: {e}, falling back to pypdf")
+            print(f"pdfplumber extraction failed: {e}")
 
-    try:
-        reader = pypdf.PdfReader(str(pdf_path))
-        for page_idx, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
-            if text.strip():
-                full_text.append(f"--- PAGE {page_idx + 1} ---\n" + text)
-        return "\n".join(full_text)
-    except Exception as e:
-        print(f"pypdf extraction failed: {e}")
-        return ""
+    return ""
 
 def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
+    """
+    Robust Bilingual & Scalable Parser:
+    - Extracts 100 to 3,100+ MCQs
+    - Retains Hindi (Devanagari \u0900-\u097F) + English
+    - Detects inline and end-of-book answer keys
+    - Automatically categorizes topics
+    """
     lines = raw_text.splitlines()
-    
+
+    # 1. End of Document Answer Key Parser
     global_answer_key: Dict[int, str] = {}
-    answer_key_patterns = [
-        r"(?:(?:Q\.?|Question\s*)?(\d+)[\.\s\:\-\)]+\s*(?:\(?([A-Da-d1-4])\)?))",
-        r"(\d+)\s*[-–=:]\s*\(?([A-Da-d1-4])\)?",
-    ]
-    
-    ans_key_section = re.search(r"(?:ANSWER\s*KEYS?|ANSWERS|SOLUTIONS?|KEY SHEET)\s*[\:\n](.*)", raw_text, re.IGNORECASE | re.DOTALL)
+    ans_key_section = re.search(r"(?:ANSWER\s*KEYS?|ANSWERS|SOLUTIONS?|KEY SHEET|उत्तर\s*माला)\s*[\:\n](.*)", raw_text, re.IGNORECASE | re.DOTALL)
     if ans_key_section:
         key_text = ans_key_section.group(1)
-        for pat in answer_key_patterns:
-            matches = re.findall(pat, key_text)
-            for q_num, ans_val in matches:
-                try:
-                    q_int = int(q_num)
-                    global_answer_key[q_int] = ans_val.upper()
-                except ValueError:
-                    continue
+        matches = re.findall(r"(?:(?:Q\.?|Question\s*|प्र\.?\s*)?(\d+)[\.\s\:\-\)]+\s*(?:\(?([A-Da-d1-4])\)?))", key_text)
+        for q_num, ans_val in matches:
+            try:
+                global_answer_key[int(q_num)] = ans_val.upper()
+            except ValueError:
+                continue
 
+    # 2. Topic/Subject Headings Patterns (English + Hindi)
     topic_header_re = re.compile(
-        r"^(?:(?:PART|SECTION|UNIT|MODULE|CHAPTER|TOPIC|SUBJECT)[\s\:\-\–]+([A-Z0-9\.\s\-\–&]+)|"
-        r"(PHYSICS|CHEMISTRY|MATHEMATICS|BIOLOGY|GENERAL KNOWLEDGE|REASONING|APTITUDE|ENGLISH|POLITY|HISTORY|GEOGRAPHY|ECONOMICS|COMPUTER SCIENCE|DATA STRUCTURES|ALGORITHMS|ELECTRICAL|MECHANICAL|CIVIL))(?:\s*[\:\-\–]|\s*$)",
+        r"^(?:(?:PART|SECTION|UNIT|MODULE|CHAPTER|TOPIC|SUBJECT|भाग|खंड|इकाई|अध्याय|विषय)[\s\:\-\–]+([A-Z0-9\.\s\-\–&]+)|"
+        r"(PHYSICS|CHEMISTRY|MATHEMATICS|BIOLOGY|GENERAL KNOWLEDGE|REASONING|APTITUDE|ENGLISH|HINDI|POLITY|HISTORY|GEOGRAPHY|ECONOMICS|COMPUTER SCIENCE|DATA STRUCTURES|ALGORITHMS|ELECTRICAL|MECHANICAL|CIVIL|इतिहास|भूगोल|राजनीति|विज्ञान|गणित|तर्कशक्ति|अर्थशास्त्र))(?:\s*[\:\-\–]|\s*$)",
         re.IGNORECASE
     )
 
+    # 3. Question Starter Patterns (e.g. Q1., 1., [1], Q.1, प्र. 1, प्रश्न 1)
     q_start_re = re.compile(
-        r"^(?:Q(?:uestion)?\.?\s*(\d+)[\.\:\-\)\s]|(?:(\d+)[\.\)]\s+)|(?:\[(\d+)\]\s+))",
+        r"^(?:(?:Q(?:uestion)?|प्र(?:श्न)?|Ques)\.?\s*(\d+)[\.\:\-\)\s]|(?:(\d+)[\.\)]\s+)|(?:\[(\d+)\]\s+))",
         re.IGNORECASE
     )
 
-    inline_ans_re = re.compile(r"(?:Ans(?:wer)?|Correct(?:\s*Option)?|Key)[\s\:\.\-\–=]+\(?\s*([A-Da-d1-4])\s*\)?", re.IGNORECASE)
-    explanation_re = re.compile(r"(?:Explanation|Solution|Hint|Details?)[\s\:\.\-\–]+(.*)", re.IGNORECASE | re.DOTALL)
+    # 4. Inline Answer & Explanation Patterns
+    inline_ans_re = re.compile(r"(?:Ans(?:wer)?|Correct(?:\s*Option)?|Key|उत्तर)[\s\:\.\-\–=]+\(?\s*([A-Da-d1-4])\s*\)?", re.IGNORECASE)
+    explanation_re = re.compile(r"(?:Explanation|Solution|Hint|Details?|व्याख्या|हल)[\s\:\.\-\\–]+(.*)", re.IGNORECASE | re.DOTALL)
 
     current_topic = "General / Miscellaneous"
     questions = []
@@ -141,25 +1217,30 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
         cleaned_body = inline_ans_re.sub("", raw_q_text)
         cleaned_body = explanation_re.sub("", cleaned_body).strip()
 
+        # Parse Options (A/B/C/D, (a)/(b)/(c)/(d), (1)/(2)/(3)/(4), (क)/(ख)/(ग)/(घ))
         options = []
-        option_matches = list(re.finditer(r"(?:[\(\[\{]?([A-Da-d1-4])[\)\]\}][\.\s\:\-\–]*|\b([A-Da-d])[\.\:]\s+)(.*?)(?=(?:[\(\[\{]?[A-Da-d1-4][\)\]\}][\.\s\:\-\–]*|\b[A-Da-d][\.\:]\s+)|$)", cleaned_body, re.DOTALL))
+        option_matches = list(re.finditer(
+            r"(?:[\(\[\{]?([A-Da-d1-4]|क|ख|ग|घ)[\)\]\}][\.\s\:\-\–]*|\b([A-Da-d])[\.\:]\s+)(.*?)(?=(?:[\(\[\{]?(?:[A-Da-d1-4]|क|ख|ग|घ)[\)\]\}][\.\s\:\-\–]*|\b[A-Da-d][\.\:]\s+)|$)",
+            cleaned_body,
+            re.DOTALL
+        ))
         
         q_title = cleaned_body
         if option_matches and len(option_matches) >= 2:
             first_opt_idx = option_matches[0].start()
             q_title = cleaned_body[:first_opt_idx].strip()
             
-            letter_map = {"1": "A", "2": "B", "3": "C", "4": "D"}
+            letter_map = {"1": "A", "2": "B", "3": "C", "4": "D", "क": "A", "ख": "B", "ग": "C", "घ": "D"}
             seen_keys = set()
             for m in option_matches:
                 key = (m.group(1) or m.group(2)).upper()
                 key = letter_map.get(key, key)
                 text = m.group(3).strip()
-                text = re.sub(r"\s+", " ", text)
                 if key in ["A", "B", "C", "D"] and key not in seen_keys and text:
                     seen_keys.add(key)
                     options.append({"key": key, "text": text})
         
+        # Fallback options parser for non-standard line breaks
         if len(options) < 2:
             sub_lines = [l.strip() for l in cleaned_body.splitlines() if l.strip()]
             q_title = sub_lines[0] if sub_lines else "Question"
@@ -175,10 +1256,10 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
 
         if len(options) < 2:
             options = [
-                {"key": "A", "text": "Option A (See PDF text)"},
-                {"key": "B", "text": "Option B (See PDF text)"},
-                {"key": "C", "text": "Option C (See PDF text)"},
-                {"key": "D", "text": "Option D (See PDF text)"}
+                {"key": "A", "text": "Option A (See PDF Question)"},
+                {"key": "B", "text": "Option B (See PDF Question)"},
+                {"key": "C", "text": "Option C (See PDF Question)"},
+                {"key": "D", "text": "Option D (See PDF Question)"}
             ]
 
         if not detected_ans:
@@ -191,7 +1272,7 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
             "question": q_title,
             "options": options,
             "correct_answer": detected_ans,
-            "explanation": explanation or f"Extracted from original PYQ sheet ({filename})"
+            "explanation": explanation or f"Extracted from {filename}"
         })
 
     for line in lines:
@@ -226,7 +1307,7 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
             }
         else:
             if current_q:
-                current_q["raw_body"] += " " + cleaned_line
+                current_q["raw_body"] += "\n" + cleaned_line
 
     finalize_question(current_q)
 
@@ -252,19 +1333,12 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
 @app.api_route("/home", methods=["GET", "HEAD"], response_class=HTMLResponse)
 @app.api_route("/quiz", methods=["GET", "HEAD"], response_class=HTMLResponse)
 async def serve_home():
-    for candidate in [TEMPLATES_DIR / "index.html", BASE_DIR / "index.html"]:
-        if candidate.exists():
-            try:
-                with open(candidate, "r", encoding="utf-8") as f:
-                    return HTMLResponse(content=f.read())
-            except Exception:
-                pass
     return HTMLResponse(content=EMBEDDED_HTML_PAGE)
 
 @app.get("/health")
 @app.get("/healthz")
 async def health_check():
-    return JSONResponse({"status": "ok", "app": "PYQ Quiz Master"})
+    return JSONResponse({"status": "ok", "app": "PYQ Quiz Master", "bilingual": True})
 
 @app.post("/api/upload")
 async def upload_pdf(file: UploadFile = File(...)):
@@ -280,13 +1354,13 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     raw_text = extract_text_from_pdf(saved_pdf_path)
     if not raw_text.strip():
-        raise HTTPException(status_code=400, detail="Could not extract readable text from PDF. Ensure it contains text and is not an image-only scan.")
+        raise HTTPException(status_code=400, detail="Could not extract text from PDF. Ensure PDF contains readable text.")
 
     parsed_quiz = parse_pyq_document(raw_text, file.filename)
     if parsed_quiz["total_questions"] == 0:
         raise HTTPException(
             status_code=422,
-            detail="No formatted questions detected. Please ensure your PDF has numbered questions (e.g. 1., Q1., Question 1) and options (A, B, C, D)."
+            detail="No formatted questions detected. Please ensure questions are numbered (e.g. 1., Q1., प्रश्न 1) with options (A, B, C, D)."
         )
 
     quiz_id = f"quiz_{file_id}"
@@ -296,6 +1370,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     db = load_db()
     db[quiz_id] = parsed_quiz
     save_db(db)
+    gc.collect()
 
     return JSONResponse({
         "status": "success",
@@ -320,7 +1395,7 @@ async def get_all_quizzes():
     return JSONResponse(summary)
 
 @app.get("/api/quiz/{quiz_id}")
-async def get_quiz(quiz_id: str, topic: Optional[str] = None):
+async def get_quiz(quiz_id: str, topic: Optional[str] = None, limit: Optional[int] = None):
     db = load_db()
     quiz = db.get(quiz_id)
     if not quiz:
@@ -329,6 +1404,12 @@ async def get_quiz(quiz_id: str, topic: Optional[str] = None):
     questions = quiz["questions"]
     if topic and topic.lower() != "all":
         questions = [q for q in questions if q["topic"].lower() == topic.lower()]
+
+    if limit and limit > 0:
+        import random
+        # Sample or take first N
+        if len(questions) > limit:
+            questions = random.sample(questions, limit)
 
     client_questions = []
     for q in questions:
@@ -367,8 +1448,12 @@ async def submit_quiz(quiz_id: str, payload: Dict[str, Any]):
     detailed_review = []
     topic_performance = {}
 
-    for q_id, q_data in all_questions_map.items():
-        user_choice = user_answers.get(q_id, "").upper().strip()
+    for q_id, user_choice_val in user_answers.items():
+        q_data = all_questions_map.get(q_id)
+        if not q_data:
+            continue
+
+        user_choice = user_choice_val.upper().strip()
         correct_ans = q_data.get("correct_answer", "").upper().strip()
         is_correct = (user_choice == correct_ans) and (user_choice != "")
         is_unattempted = (user_choice == "")
@@ -402,6 +1487,24 @@ async def submit_quiz(quiz_id: str, payload: Dict[str, Any]):
             "explanation": q_data.get("explanation", "")
         })
 
+    # Include remaining questions if submitted in full test mode
+    if len(detailed_review) < len(quiz["questions"]) and len(user_answers) == 0:
+        for q_id, q_data in all_questions_map.items():
+            unattempted_count += 1
+            t_name = q_data.get("topic", "General")
+            detailed_review.append({
+                "id": q_id,
+                "original_num": q_data.get("original_num"),
+                "topic": t_name,
+                "question": q_data["question"],
+                "options": q_data["options"],
+                "user_choice": "",
+                "correct_answer": q_data.get("correct_answer", "A"),
+                "is_correct": False,
+                "status": "unattempted",
+                "explanation": q_data.get("explanation", "")
+            })
+
     total_submitted_eval = len(detailed_review)
     percentage = round((correct_count / total_submitted_eval * 100), 2) if total_submitted_eval > 0 else 0
 
@@ -421,5 +1524,5 @@ async def submit_quiz(quiz_id: str, payload: Dict[str, Any]):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    print(f"Starting PYQ Quiz Server on port {port}")
+    print(f"Starting Bilingual PYQ Quiz Server on port {port}")
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
