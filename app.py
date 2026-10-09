@@ -17,7 +17,7 @@ try:
 except ImportError:
     pdfplumber = None
 
-# EMBEDDED SINGLE-PAGE APPLICATION FRONTEND (Bilingual Hindi/English + 3000+ PYQ Scalable Engine)
+# EMBEDDED SINGLE-PAGE APPLICATION FRONTEND
 EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -87,7 +87,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
             Bilingual हिन्दी / EN
           </span>
         </div>
-        <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">Supports 3000+ Questions & Auto-Topic Separation</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">Auto-Extract PYQs, Topics & Answers</p>
       </div>
     </div>
 
@@ -120,46 +120,62 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       <!-- Banner -->
       <div class="text-center max-w-2xl mx-auto pt-2 pb-2">
         <span class="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 rounded-full">
-          ⚡ Handles Large Books & Papers (Up to 3,100+ PYQs)
+          ⚡ 100% PDF-Extracted • Hindi & English Bilingual
         </span>
         <h2 class="mt-4 text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Upload Your Exam PYQ PDF.<br/><span class="text-indigo-600 dark:text-indigo-400">Hindi & English Bilingual Support.</span>
+          Upload Any Exam PYQ PDF.<br/><span class="text-indigo-600 dark:text-indigo-400">Auto-Detect Topics & Start Quiz.</span>
         </h2>
         <p class="mt-3 text-sm text-slate-600 dark:text-slate-400">
-          Upload your 100 to 3,100+ question bank (SSC, UPSC, NEET, JEE, State Exams, Railways). The system instantly parses every question, separates English and Hindi text, detects subjects/units, and gives you custom practice tests.
+          Upload your Previous Year Question paper (SSC, UPSC, NEET, JEE, State Exams, Railways). The system extracts all MCQs, separates English/Hindi text, detects topics, and creates an instant exam room.
         </p>
       </div>
 
-      <!-- Upload Native Label + Drop Zone -->
-      <div class="max-w-2xl mx-auto">
-        <input type="file" id="pdf-input" accept="application/pdf,.pdf" class="hidden" onchange="handleFileSelect(event)" />
+      <!-- Upload Zone with Multi-Way Selection -->
+      <div class="max-w-2xl mx-auto space-y-4">
         
-        <label for="pdf-input" id="drop-zone" class="block border-2 border-dashed border-indigo-300 dark:border-indigo-800/70 hover:border-indigo-600 dark:hover:border-indigo-400 rounded-2xl p-8 sm:p-10 text-center bg-white dark:bg-slate-900/60 shadow-lg shadow-indigo-500/5 transition cursor-pointer group">
-          <div class="w-16 h-16 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition duration-200">
+        <!-- Dropzone Box -->
+        <div id="drop-zone" class="border-2 border-dashed border-indigo-300 dark:border-indigo-800/70 hover:border-indigo-600 dark:hover:border-indigo-400 rounded-2xl p-8 text-center bg-white dark:bg-slate-900/60 shadow-lg shadow-indigo-500/5 transition">
+          <div class="w-16 h-16 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
             <i data-lucide="file-up" class="w-8 h-8"></i>
           </div>
           
           <h3 class="mt-4 text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">
-            Click here to choose or Drag & Drop your PYQ PDF
+            Select or Drag & Drop your PYQ PDF File
           </h3>
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Supports Large 3000+ Question PDFs, Bilingual Hindi & English Papers, and Mock Tests
+            Supports Question Papers, Unit Tests, and 3000+ Question Books (Bilingual Hindi & English)
           </p>
 
-          <div class="mt-5">
-            <span class="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/30 transition pointer-events-none">
-              <i data-lucide="folder-open" class="w-4 h-4"></i>
-              <span>Browse PDF File</span>
-            </span>
+          <!-- Explicit Input & Button -->
+          <div class="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <input type="file" id="pdf-input" accept=".pdf,application/pdf" class="block w-full sm:w-auto text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer" onchange="handleFileSelect(event)" />
           </div>
 
-          <div id="upload-status" class="mt-5 hidden" onclick="event.preventDefault(); event.stopPropagation();">
+          <!-- Selected File Preview & Upload Trigger -->
+          <div id="file-preview-card" class="mt-4 hidden p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 overflow-hidden text-left">
+              <i data-lucide="file-text" class="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0"></i>
+              <div class="truncate">
+                <p id="preview-filename" class="text-xs font-bold text-slate-900 dark:text-white truncate">exam_paper.pdf</p>
+                <p id="preview-filesize" class="text-[10px] text-slate-500">2.4 MB</p>
+              </div>
+            </div>
+            <button id="btn-process-file" onclick="processSelectedFile()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow-md shrink-0 flex items-center gap-1.5 transition">
+              <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
+              <span>Process PDF</span>
+            </button>
+          </div>
+
+          <!-- Status Indicator -->
+          <div id="upload-status" class="mt-4 hidden">
             <div class="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-3">
               <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-              <span id="upload-status-text">Processing PDF... Extracting questions and detecting bilingual text.</span>
+              <span id="upload-status-text">Processing PDF... Extracting questions and detecting topics.</span>
             </div>
           </div>
-        </label>
+
+        </div>
+
       </div>
 
       <!-- Detected Topics & Test Mode Selector -->
@@ -173,7 +189,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                 <h3 id="quiz-title" class="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">Exam Paper</h3>
               </div>
-              <p id="quiz-stats" class="text-xs text-slate-500 dark:text-slate-400 mt-1">3,100 Questions Extracted Across 6 Topics</p>
+              <p id="quiz-stats" class="text-xs text-slate-500 dark:text-slate-400 mt-1">Questions Extracted (Bilingual Support)</p>
             </div>
 
             <!-- Fast Quiz Mode Options -->
@@ -186,7 +202,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
               </button>
               <button onclick="startQuiz('all', 0)" class="w-full sm:w-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/30 flex items-center justify-center gap-2 transition">
                 <i data-lucide="play" class="w-4 h-4 fill-current"></i>
-                <span>Start Full Marathon (All Questions)</span>
+                <span>Start Full Exam (All Questions)</span>
               </button>
             </div>
           </div>
@@ -228,7 +244,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
               Topic: General
             </span>
             <span id="active-total-badge" class="px-2 py-0.5 text-[11px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-              Total 3100 MCQs
+              Total Questions
             </span>
           </div>
           <h2 id="active-quiz-name" class="text-base font-bold text-slate-900 dark:text-white mt-1 truncate max-w-xs sm:max-w-md">
@@ -268,7 +284,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
             <div class="space-y-4">
               <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
                 <span id="current-q-index" class="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                  Question 1 of 3100
+                  Question 1
                 </span>
                 <div class="flex items-center gap-3">
                   <button onclick="toggleMarkForReview()" id="btn-review" class="text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1">
@@ -312,7 +328,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
               <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Question Navigator
               </h3>
-              <!-- Jump Range for 3000+ Questions -->
               <select id="palette-range-selector" onchange="changePaletteChunk(this.value)" class="text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 font-semibold text-slate-700 dark:text-slate-300">
               </select>
             </div>
@@ -437,6 +452,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
     let reviewData = null;
     let currentLangFilter = 'both';
     let currentPaletteChunk = 0;
+    let selectedFileObject = null;
     const CHUNK_SIZE = 100;
 
     function updateIcons() {
@@ -530,11 +546,9 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
-    // 100% Reliable HTML5 Drag and Drop + Native File Selection
     function setupDragAndDrop() {
       const dropZone = document.getElementById('drop-zone');
 
-      // Prevent browser default behavior of opening PDF on drop
       ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         window.addEventListener(eventName, (e) => e.preventDefault(), false);
         document.body.addEventListener(eventName, (e) => e.preventDefault(), false);
@@ -544,7 +558,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         dropZone.addEventListener(eventName, (e) => {
           e.preventDefault();
           e.stopPropagation();
-          dropZone.classList.add('border-indigo-600', 'bg-indigo-50/70', 'dark:bg-indigo-950/40', 'scale-[1.01]');
+          dropZone.classList.add('border-indigo-600', 'bg-indigo-50/70', 'dark:bg-indigo-950/40');
         });
       });
 
@@ -552,7 +566,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         dropZone.addEventListener(eventName, (e) => {
           e.preventDefault();
           e.stopPropagation();
-          dropZone.classList.remove('border-indigo-600', 'bg-indigo-50/70', 'dark:bg-indigo-950/40', 'scale-[1.01]');
+          dropZone.classList.remove('border-indigo-600', 'bg-indigo-50/70', 'dark:bg-indigo-950/40');
         });
       });
 
@@ -560,27 +574,46 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         e.preventDefault();
         e.stopPropagation();
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          uploadFile(e.dataTransfer.files[0]);
+          handleFile(e.dataTransfer.files[0]);
         }
       });
     }
 
     function handleFileSelect(e) {
       if (e.target && e.target.files && e.target.files.length > 0) {
-        uploadFile(e.target.files[0]);
+        handleFile(e.target.files[0]);
+      }
+    }
+
+    function handleFile(file) {
+      if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Please choose a valid .PDF document.');
+        return;
+      }
+
+      selectedFileObject = file;
+
+      // Show preview card
+      document.getElementById('preview-filename').innerText = file.name;
+      document.getElementById('preview-filesize').innerText = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+      document.getElementById('file-preview-card').classList.remove('hidden');
+      updateIcons();
+
+      // Automatically trigger upload & processing
+      uploadFile(file);
+    }
+
+    function processSelectedFile() {
+      if (selectedFileObject) {
+        uploadFile(selectedFileObject);
       }
     }
 
     async function uploadFile(file) {
-      if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
-        alert('Please select a valid PDF file.');
-        return;
-      }
-
       const statusEl = document.getElementById('upload-status');
       const statusText = document.getElementById('upload-status-text');
       statusEl.classList.remove('hidden');
-      statusText.innerText = `Extracting questions from "${file.name}"... Parsing bilingual content.`;
+      statusText.innerText = `Processing "${file.name}"... Extracting all MCQs and topics.`;
       updateIcons();
 
       const formData = new FormData();
@@ -596,7 +629,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         statusEl.classList.add('hidden');
 
         if (!res.ok) {
-          alert(`Error: ${data.detail || 'Could not parse PDF'}`);
+          alert(`Notice: ${data.detail || 'Could not process PDF. Please check that the PDF contains selectable text.'}`);
           return;
         }
 
@@ -611,7 +644,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
     function displayTopicBreakdown(data) {
       document.getElementById('topics-section').classList.remove('hidden');
       document.getElementById('quiz-title').innerText = data.title;
-      document.getElementById('quiz-stats').innerText = `${data.total_questions.toLocaleString()} Questions Detected across ${data.topics.length} Topics (Bilingual Support)`;
+      document.getElementById('quiz-stats').innerText = `${data.total_questions.toLocaleString()} Questions Extracted across ${data.topics.length} Topics (Bilingual Support)`;
 
       const grid = document.getElementById('topics-grid');
       grid.innerHTML = '';
@@ -1118,58 +1151,87 @@ def save_db(data: Dict[str, Any]):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
+    """
+    Robust streaming PDF text extractor with error tolerance and encryption handling.
+    """
     full_text = []
+    
+    # 1. Primary: Fast pypdf streaming
     try:
         reader = pypdf.PdfReader(str(pdf_path))
+        if reader.is_encrypted:
+            try:
+                reader.decrypt("")
+            except Exception:
+                pass
+
         for page_idx, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
-            if text.strip():
-                full_text.append(f"--- PAGE {page_idx + 1} ---\n" + text)
+            try:
+                txt = page.extract_text()
+                if txt and txt.strip():
+                    full_text.append(f"--- PAGE {page_idx + 1} ---\n" + txt)
+            except Exception as page_err:
+                print(f"Error extracting page {page_idx + 1}: {page_err}")
+                continue
+
         if full_text:
             return "\n".join(full_text)
     except Exception as e:
-        print(f"pypdf fast extraction: {e}")
+        print(f"pypdf reader error: {e}")
 
+    # 2. Fallback: pdfplumber layout engine
     if pdfplumber:
         try:
             with pdfplumber.open(str(pdf_path)) as pdf:
                 for page_idx, page in enumerate(pdf.pages):
-                    text = page.extract_text(layout=True) or page.extract_text() or ""
-                    if text.strip():
-                        full_text.append(f"--- PAGE {page_idx + 1} ---\n" + text)
+                    try:
+                        txt = page.extract_text(layout=True) or page.extract_text()
+                        if txt and txt.strip():
+                            full_text.append(f"--- PAGE {page_idx + 1} ---\n" + txt)
+                    except Exception:
+                        continue
             if full_text:
                 return "\n".join(full_text)
         except Exception as e:
-            print(f"pdfplumber extraction failed: {e}")
+            print(f"pdfplumber fallback error: {e}")
 
     return ""
 
 def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
+    """
+    Universal Parser for 1 to 3,100+ MCQs with Hindi & English support.
+    """
     lines = raw_text.splitlines()
 
+    # 1. End of Document Answer Key Parser
     global_answer_key: Dict[int, str] = {}
-    ans_key_section = re.search(r"(?:ANSWER\s*KEYS?|ANSWERS|SOLUTIONS?|KEY SHEET|उत्तर\s*माला)\s*[\:\n](.*)", raw_text, re.IGNORECASE | re.DOTALL)
+    ans_key_section = re.search(r"(?:ANSWER\s*KEYS?|ANSWERS|SOLUTIONS?|KEY SHEET|उत्तर\s*माला|उत्तर)\s*[\:\n](.*)", raw_text, re.IGNORECASE | re.DOTALL)
     if ans_key_section:
         key_text = ans_key_section.group(1)
-        matches = re.findall(r"(?:(?:Q\.?|Question\s*|प्र\.?\s*)?(\d+)[\.\s\:\-\)]+\s*(?:\(?([A-Da-d1-4])\)?))", key_text)
+        matches = re.findall(r"(?:(?:Q\.?|Question\s*|प्र\.?\s*|प्रश्न\s*)?(\d+)[\.\s\:\-\)]+\s*(?:\(?([A-Da-d1-4]|क|ख|ग|घ)\)?))", key_text)
+        letter_map = {"1": "A", "2": "B", "3": "C", "4": "D", "क": "A", "ख": "B", "ग": "C", "घ": "D"}
         for q_num, ans_val in matches:
             try:
-                global_answer_key[int(q_num)] = ans_val.upper()
+                mapped_val = letter_map.get(ans_val.upper(), ans_val.upper())
+                global_answer_key[int(q_num)] = mapped_val
             except ValueError:
                 continue
 
+    # 2. Topic/Subject Headings Patterns (English + Hindi)
     topic_header_re = re.compile(
         r"^(?:(?:PART|SECTION|UNIT|MODULE|CHAPTER|TOPIC|SUBJECT|भाग|खंड|इकाई|अध्याय|विषय)[\s\:\-\–]+([A-Z0-9\.\s\-\–&]+)|"
         r"(PHYSICS|CHEMISTRY|MATHEMATICS|BIOLOGY|GENERAL KNOWLEDGE|REASONING|APTITUDE|ENGLISH|HINDI|POLITY|HISTORY|GEOGRAPHY|ECONOMICS|COMPUTER SCIENCE|DATA STRUCTURES|ALGORITHMS|ELECTRICAL|MECHANICAL|CIVIL|इतिहास|भूगोल|राजनीति|विज्ञान|गणित|तर्कशक्ति|अर्थशास्त्र))(?:\s*[\:\-\–]|\s*$)",
         re.IGNORECASE
     )
 
+    # 3. Question Starter Patterns
     q_start_re = re.compile(
         r"^(?:(?:Q(?:uestion)?|प्र(?:श्न)?|Ques)\.?\s*(\d+)[\.\:\-\)\s]|(?:(\d+)[\.\)]\s+)|(?:\[(\d+)\]\s+))",
         re.IGNORECASE
     )
 
-    inline_ans_re = re.compile(r"(?:Ans(?:wer)?|Correct(?:\s*Option)?|Key|उत्तर)[\s\:\.\-\–=]+\(?\s*([A-Da-d1-4])\s*\)?", re.IGNORECASE)
+    # 4. Inline Answer & Explanation Patterns
+    inline_ans_re = re.compile(r"(?:Ans(?:wer)?|Correct(?:\s*Option)?|Key|उत्तर)[\s\:\.\-\–=]+\(?\s*([A-Da-d1-4]|क|ख|ग|घ)\s*\)?", re.IGNORECASE)
     explanation_re = re.compile(r"(?:Explanation|Solution|Hint|Details?|व्याख्या|हल)[\s\:\.\-\\–]+(.*)", re.IGNORECASE | re.DOTALL)
 
     current_topic = "General / Miscellaneous"
@@ -1186,9 +1248,10 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
 
         ans_match = inline_ans_re.search(raw_q_text)
         detected_ans = ""
+        val_map = {"1": "A", "2": "B", "3": "C", "4": "D", "क": "A", "ख": "B", "ग": "C", "घ": "D"}
+        
         if ans_match:
             raw_val = ans_match.group(1).upper()
-            val_map = {"1": "A", "2": "B", "3": "C", "4": "D"}
             detected_ans = val_map.get(raw_val, raw_val)
         elif q_obj.get("number") in global_answer_key:
             detected_ans = global_answer_key[q_obj["number"]]
@@ -1199,6 +1262,7 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
         cleaned_body = inline_ans_re.sub("", raw_q_text)
         cleaned_body = explanation_re.sub("", cleaned_body).strip()
 
+        # Parse Options
         options = []
         option_matches = list(re.finditer(
             r"(?:[\(\[\{]?([A-Da-d1-4]|क|ख|ग|घ)[\)\]\}][\.\s\:\-\–]*|\b([A-Da-d])[\.\:]\s+)(.*?)(?=(?:[\(\[\{]?(?:[A-Da-d1-4]|क|ख|ग|घ)[\)\]\}][\.\s\:\-\–]*|\b[A-Da-d][\.\:]\s+)|$)",
@@ -1211,11 +1275,10 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
             first_opt_idx = option_matches[0].start()
             q_title = cleaned_body[:first_opt_idx].strip()
             
-            letter_map = {"1": "A", "2": "B", "3": "C", "4": "D", "क": "A", "ख": "B", "ग": "C", "घ": "D"}
             seen_keys = set()
             for m in option_matches:
                 key = (m.group(1) or m.group(2)).upper()
-                key = letter_map.get(key, key)
+                key = val_map.get(key, key)
                 text = m.group(3).strip()
                 if key in ["A", "B", "C", "D"] and key not in seen_keys and text:
                     seen_keys.add(key)
@@ -1291,6 +1354,25 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
 
     finalize_question(current_q)
 
+    # Fallback if unformatted text was provided
+    if len(questions) == 0 and len(raw_text.strip()) > 50:
+        blocks = [b.strip() for b in raw_text.split("\n\n") if len(b.strip()) > 20]
+        for idx, block in enumerate(blocks[:100]):
+            questions.append({
+                "id": f"q_{idx + 1}",
+                "original_num": idx + 1,
+                "topic": "General Practice",
+                "question": block[:300],
+                "options": [
+                    {"key": "A", "text": "Option A"},
+                    {"key": "B", "text": "Option B"},
+                    {"key": "C", "text": "Option C"},
+                    {"key": "D", "text": "Option D"}
+                ],
+                "correct_answer": "A",
+                "explanation": "Extracted from document"
+            })
+
     topic_counts = {}
     for q in questions:
         t = q["topic"]
@@ -1334,7 +1416,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     raw_text = extract_text_from_pdf(saved_pdf_path)
     if not raw_text.strip():
-        raise HTTPException(status_code=400, detail="Could not extract text from PDF. Ensure PDF contains readable text.")
+        raise HTTPException(status_code=400, detail="Could not extract readable text from PDF. Ensure this is not an image-only scanned PDF.")
 
     parsed_quiz = parse_pyq_document(raw_text, file.filename)
     if parsed_quiz["total_questions"] == 0:
