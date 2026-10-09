@@ -91,7 +91,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- Right bar controls: Language Selector & Theme -->
     <div class="flex items-center gap-2.5">
       <!-- Language Mode Selector -->
       <div class="hidden sm:flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 text-xs font-bold">
@@ -131,29 +130,36 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         </p>
       </div>
 
-      <!-- Upload Drop Zone -->
+      <!-- Upload Native Label + Drop Zone -->
       <div class="max-w-2xl mx-auto">
-        <div id="drop-zone" class="border-2 border-dashed border-indigo-300 dark:border-indigo-800/70 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-2xl p-8 text-center bg-white dark:bg-slate-900/60 shadow-lg shadow-indigo-500/5 transition cursor-pointer group">
-          <input type="file" id="pdf-input" accept="application/pdf" class="hidden" onchange="handleFileSelect(event)" />
-          
+        <input type="file" id="pdf-input" accept="application/pdf,.pdf" class="hidden" onchange="handleFileSelect(event)" />
+        
+        <label for="pdf-input" id="drop-zone" class="block border-2 border-dashed border-indigo-300 dark:border-indigo-800/70 hover:border-indigo-600 dark:hover:border-indigo-400 rounded-2xl p-8 sm:p-10 text-center bg-white dark:bg-slate-900/60 shadow-lg shadow-indigo-500/5 transition cursor-pointer group">
           <div class="w-16 h-16 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition duration-200">
             <i data-lucide="file-up" class="w-8 h-8"></i>
           </div>
           
-          <h3 class="mt-4 text-base font-bold text-slate-800 dark:text-slate-200">
-            Click to upload or drag & drop your PYQ PDF
+          <h3 class="mt-4 text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">
+            Click here to choose or Drag & Drop your PYQ PDF
           </h3>
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Supports Large 3000+ Question PDFs, Bilingual Hindi & English Papers, and Mock Tests
           </p>
 
-          <div id="upload-status" class="mt-5 hidden">
+          <div class="mt-5">
+            <span class="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/30 transition pointer-events-none">
+              <i data-lucide="folder-open" class="w-4 h-4"></i>
+              <span>Browse PDF File</span>
+            </span>
+          </div>
+
+          <div id="upload-status" class="mt-5 hidden" onclick="event.preventDefault(); event.stopPropagation();">
             <div class="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-3">
               <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
               <span id="upload-status-text">Processing PDF... Extracting questions and detecting bilingual text.</span>
             </div>
           </div>
-        </div>
+        </label>
       </div>
 
       <!-- Detected Topics & Test Mode Selector -->
@@ -191,9 +197,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
           <h4 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
             Auto-Detected Topics / Subjects
           </h4>
-          <div id="topics-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <!-- Injected topic cards -->
-          </div>
+          <div id="topics-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
 
       </div>
@@ -233,7 +237,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         </div>
 
         <div class="flex items-center gap-3">
-          <!-- Language Toggle in Quiz Bar (Mobile & Desktop) -->
+          <!-- Language Toggle in Quiz Bar -->
           <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 text-xs font-bold">
             <button onclick="setLangFilter('both')" class="px-2 py-1 rounded-lg text-[11px] font-bold lang-pill active-lang bg-indigo-600 text-white" id="pill-both">Both</button>
             <button onclick="setLangFilter('en')" class="px-2 py-1 rounded-lg text-[11px] font-bold lang-pill text-slate-600 dark:text-slate-300" id="pill-en">EN</button>
@@ -275,14 +279,10 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
               </div>
 
               <!-- Question Text (Bilingual Rendering) -->
-              <div id="q-text-container" class="space-y-2">
-                <!-- Injected bilingual question text -->
-              </div>
+              <div id="q-text-container" class="space-y-2"></div>
 
               <!-- Options Container -->
-              <div id="q-options" class="space-y-3 pt-2">
-                <!-- Injected options -->
-              </div>
+              <div id="q-options" class="space-y-3 pt-2"></div>
             </div>
 
             <!-- Bottom Navigation buttons -->
@@ -314,14 +314,11 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
               </h3>
               <!-- Jump Range for 3000+ Questions -->
               <select id="palette-range-selector" onchange="changePaletteChunk(this.value)" class="text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 font-semibold text-slate-700 dark:text-slate-300">
-                <!-- Range options (1-100, 101-200, ...) injected dynamically -->
               </select>
             </div>
 
-            <!-- Question Numbers Grid (Rendered in chunks for instant 60fps performance) -->
-            <div id="palette-grid" class="grid grid-cols-5 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto p-1">
-              <!-- Number buttons injected here -->
-            </div>
+            <!-- Question Numbers Grid -->
+            <div id="palette-grid" class="grid grid-cols-5 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto p-1"></div>
 
             <!-- Legend & Stats -->
             <div class="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
@@ -438,8 +435,8 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
     let timerInterval = null;
     let secondsElapsed = 0;
     let reviewData = null;
-    let currentLangFilter = 'both'; // 'both', 'en', 'hi'
-    let currentPaletteChunk = 0; // 0 = 1-100, 1 = 101-200, ...
+    let currentLangFilter = 'both';
+    let currentPaletteChunk = 0;
     const CHUNK_SIZE = 100;
 
     function updateIcons() {
@@ -467,8 +464,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
 
     function setLangFilter(mode) {
       currentLangFilter = mode;
-      
-      // Update Navbar buttons
       ['both', 'en', 'hi'].forEach(l => {
         const nb = document.getElementById(`lang-btn-${l}`);
         if (nb) {
@@ -492,7 +487,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       }
     }
 
-    // Helper: Split bilingual text if present
     function formatBilingualText(rawText) {
       if (!rawText) return '';
       const devanagariPattern = /[\u0900-\u097F]/;
@@ -502,7 +496,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         return `<div class="text-slate-900 dark:text-slate-100">${escapeHtml(rawText)}</div>`;
       }
 
-      // Check if text has English + Hindi portions
       const lines = rawText.split('\n').filter(l => l.trim().length > 0);
       let enLines = [];
       let hiLines = [];
@@ -523,7 +516,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       } else if (currentLangFilter === 'hi') {
         return `<div class="text-slate-900 dark:text-slate-100 font-hindi font-medium leading-relaxed">${escapeHtml(hiText || rawText)}</div>`;
       } else {
-        // Both side-by-side / stacked
         return `
           <div class="space-y-2">
             ${enText ? `<div class="text-slate-900 dark:text-slate-100 font-medium">${escapeHtml(enText)}</div>` : ''}
@@ -538,42 +530,49 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
-    // Drag and Drop
+    // 100% Reliable HTML5 Drag and Drop + Native File Selection
     function setupDragAndDrop() {
       const dropZone = document.getElementById('drop-zone');
-      const fileInput = document.getElementById('pdf-input');
 
-      dropZone.addEventListener('click', () => fileInput.click());
+      // Prevent browser default behavior of opening PDF on drop
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        window.addEventListener(eventName, (e) => e.preventDefault(), false);
+        document.body.addEventListener(eventName, (e) => e.preventDefault(), false);
+      });
 
-      ['dragenter', 'dragover'].forEach(eName => {
-        dropZone.addEventListener(eName, (e) => {
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
           e.preventDefault();
-          dropZone.classList.add('border-indigo-600', 'bg-indigo-50/50', 'dark:bg-indigo-950/20');
+          e.stopPropagation();
+          dropZone.classList.add('border-indigo-600', 'bg-indigo-50/70', 'dark:bg-indigo-950/40', 'scale-[1.01]');
         });
       });
 
-      ['dragleave', 'drop'].forEach(eName => {
-        dropZone.addEventListener(eName, (e) => {
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
           e.preventDefault();
-          dropZone.classList.remove('border-indigo-600', 'bg-indigo-50/50', 'dark:bg-indigo-950/20');
+          e.stopPropagation();
+          dropZone.classList.remove('border-indigo-600', 'bg-indigo-50/70', 'dark:bg-indigo-950/40', 'scale-[1.01]');
         });
       });
 
       dropZone.addEventListener('drop', (e) => {
-        if (e.dataTransfer.files.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
           uploadFile(e.dataTransfer.files[0]);
         }
       });
     }
 
     function handleFileSelect(e) {
-      if (e.target.files.length > 0) {
+      if (e.target && e.target.files && e.target.files.length > 0) {
         uploadFile(e.target.files[0]);
       }
     }
 
     async function uploadFile(file) {
-      if (!file.name.toLowerCase().endsWith('.pdf')) {
+      if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
         alert('Please select a valid PDF file.');
         return;
       }
@@ -581,7 +580,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       const statusEl = document.getElementById('upload-status');
       const statusText = document.getElementById('upload-status-text');
       statusEl.classList.remove('hidden');
-      statusText.innerText = `Extracting all questions from "${file.name}"... Parsing bilingual content.`;
+      statusText.innerText = `Extracting questions from "${file.name}"... Parsing bilingual content.`;
       updateIcons();
 
       const formData = new FormData();
@@ -722,7 +721,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       if (!questions || questions.length === 0) return;
       const q = questions[currentQIndex];
 
-      // Automatically sync palette chunk with current question index
       const expectedChunk = Math.floor(currentQIndex / CHUNK_SIZE);
       if (expectedChunk !== currentPaletteChunk) {
         currentPaletteChunk = expectedChunk;
@@ -952,7 +950,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         return;
       }
 
-      // Render top 150 items for super fast DOM performance
       const displayItems = items.slice(0, 150);
 
       displayItems.forEach((item, index) => {
@@ -1071,7 +1068,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       document.getElementById('previous-papers-modal').classList.add('hidden');
     }
 
-    // Keyboard Shortcuts (1,2,3,4 or A,B,C,D)
     window.addEventListener('keydown', (e) => {
       if (document.getElementById('view-quiz').classList.contains('hidden')) return;
       const keyMap = { '1': 'A', '2': 'B', '3': 'C', '4': 'D', 'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D' };
@@ -1122,9 +1118,6 @@ def save_db(data: Dict[str, Any]):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
-    """
-    High-performance streaming text extraction capable of handling 500+ pages (3,000+ MCQs) in seconds.
-    """
     full_text = []
     try:
         reader = pypdf.PdfReader(str(pdf_path))
@@ -1135,7 +1128,7 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
         if full_text:
             return "\n".join(full_text)
     except Exception as e:
-        print(f"pypdf fast extraction fallback: {e}")
+        print(f"pypdf fast extraction: {e}")
 
     if pdfplumber:
         try:
@@ -1152,16 +1145,8 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
     return ""
 
 def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
-    """
-    Robust Bilingual & Scalable Parser:
-    - Extracts 100 to 3,100+ MCQs
-    - Retains Hindi (Devanagari \u0900-\u097F) + English
-    - Detects inline and end-of-book answer keys
-    - Automatically categorizes topics
-    """
     lines = raw_text.splitlines()
 
-    # 1. End of Document Answer Key Parser
     global_answer_key: Dict[int, str] = {}
     ans_key_section = re.search(r"(?:ANSWER\s*KEYS?|ANSWERS|SOLUTIONS?|KEY SHEET|उत्तर\s*माला)\s*[\:\n](.*)", raw_text, re.IGNORECASE | re.DOTALL)
     if ans_key_section:
@@ -1173,20 +1158,17 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
             except ValueError:
                 continue
 
-    # 2. Topic/Subject Headings Patterns (English + Hindi)
     topic_header_re = re.compile(
         r"^(?:(?:PART|SECTION|UNIT|MODULE|CHAPTER|TOPIC|SUBJECT|भाग|खंड|इकाई|अध्याय|विषय)[\s\:\-\–]+([A-Z0-9\.\s\-\–&]+)|"
         r"(PHYSICS|CHEMISTRY|MATHEMATICS|BIOLOGY|GENERAL KNOWLEDGE|REASONING|APTITUDE|ENGLISH|HINDI|POLITY|HISTORY|GEOGRAPHY|ECONOMICS|COMPUTER SCIENCE|DATA STRUCTURES|ALGORITHMS|ELECTRICAL|MECHANICAL|CIVIL|इतिहास|भूगोल|राजनीति|विज्ञान|गणित|तर्कशक्ति|अर्थशास्त्र))(?:\s*[\:\-\–]|\s*$)",
         re.IGNORECASE
     )
 
-    # 3. Question Starter Patterns (e.g. Q1., 1., [1], Q.1, प्र. 1, प्रश्न 1)
     q_start_re = re.compile(
         r"^(?:(?:Q(?:uestion)?|प्र(?:श्न)?|Ques)\.?\s*(\d+)[\.\:\-\)\s]|(?:(\d+)[\.\)]\s+)|(?:\[(\d+)\]\s+))",
         re.IGNORECASE
     )
 
-    # 4. Inline Answer & Explanation Patterns
     inline_ans_re = re.compile(r"(?:Ans(?:wer)?|Correct(?:\s*Option)?|Key|उत्तर)[\s\:\.\-\–=]+\(?\s*([A-Da-d1-4])\s*\)?", re.IGNORECASE)
     explanation_re = re.compile(r"(?:Explanation|Solution|Hint|Details?|व्याख्या|हल)[\s\:\.\-\\–]+(.*)", re.IGNORECASE | re.DOTALL)
 
@@ -1217,7 +1199,6 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
         cleaned_body = inline_ans_re.sub("", raw_q_text)
         cleaned_body = explanation_re.sub("", cleaned_body).strip()
 
-        # Parse Options (A/B/C/D, (a)/(b)/(c)/(d), (1)/(2)/(3)/(4), (क)/(ख)/(ग)/(घ))
         options = []
         option_matches = list(re.finditer(
             r"(?:[\(\[\{]?([A-Da-d1-4]|क|ख|ग|घ)[\)\]\}][\.\s\:\-\–]*|\b([A-Da-d])[\.\:]\s+)(.*?)(?=(?:[\(\[\{]?(?:[A-Da-d1-4]|क|ख|ग|घ)[\)\]\}][\.\s\:\-\–]*|\b[A-Da-d][\.\:]\s+)|$)",
@@ -1240,7 +1221,6 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
                     seen_keys.add(key)
                     options.append({"key": key, "text": text})
         
-        # Fallback options parser for non-standard line breaks
         if len(options) < 2:
             sub_lines = [l.strip() for l in cleaned_body.splitlines() if l.strip()]
             q_title = sub_lines[0] if sub_lines else "Question"
@@ -1407,7 +1387,6 @@ async def get_quiz(quiz_id: str, topic: Optional[str] = None, limit: Optional[in
 
     if limit and limit > 0:
         import random
-        # Sample or take first N
         if len(questions) > limit:
             questions = random.sample(questions, limit)
 
@@ -1487,7 +1466,6 @@ async def submit_quiz(quiz_id: str, payload: Dict[str, Any]):
             "explanation": q_data.get("explanation", "")
         })
 
-    # Include remaining questions if submitted in full test mode
     if len(detailed_review) < len(quiz["questions"]) and len(user_answers) == 0:
         for q_id, q_data in all_questions_map.items():
             unattempted_count += 1
