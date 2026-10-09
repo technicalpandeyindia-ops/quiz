@@ -146,21 +146,32 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
           </div>
 
           <!-- File Chooser Container -->
-          <div class="flex flex-col items-center justify-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
-            <input type="file" id="pdf-input" accept=".pdf,application/pdf" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer" onchange="handleFileSelect(event)" />
+          <div class="flex flex-col items-center justify-center gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+            <input type="file" id="pdf-input" accept=".pdf,application/pdf" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer" onchange="handleFileChange(event)" />
             
-            <!-- Large Prominent Process Button -->
-            <button id="btn-process" onclick="submitChosenFile()" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition transform active:scale-98">
-              <i data-lucide="play" class="w-4 h-4 fill-current"></i>
-              <span>🚀 Extract Questions & Start Quiz</span>
+            <!-- Large Prominent Process Button with Live Progress State -->
+            <button id="btn-process" onclick="submitChosenFile()" class="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition transform active:scale-98 disabled:opacity-60 disabled:cursor-not-allowed">
+              <i id="btn-icon" data-lucide="play" class="w-4 h-4 fill-current"></i>
+              <span id="btn-text">🚀 Extract Questions & Start Quiz</span>
             </button>
           </div>
 
-          <!-- Status Indicator -->
-          <div id="upload-status" class="hidden">
+          <!-- Error Alert Banner -->
+          <div id="upload-error-banner" class="hidden p-4 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs font-semibold text-left">
+            <div class="flex items-start gap-2">
+              <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 shrink-0 mt-0.5"></i>
+              <div id="upload-error-message">Error processing PDF.</div>
+            </div>
+          </div>
+
+          <!-- Status / Progress Indicator -->
+          <div id="upload-status" class="hidden space-y-3">
             <div class="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-3">
               <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-              <span id="upload-status-text">Processing PDF... Extracting all questions and topics.</span>
+              <span id="upload-status-text">Uploading PDF and extracting questions... Please wait a few seconds.</span>
+            </div>
+            <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+              <div class="bg-indigo-600 h-2 rounded-full animate-pulse w-3/4"></div>
             </div>
           </div>
 
@@ -547,30 +558,52 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
       });
     }
 
-    function handleFileSelect(e) {
+    function handleFileChange(e) {
+      hideError();
       if (e.target && e.target.files && e.target.files.length > 0) {
-        // Automatically start processing as soon as a file is picked
+        // Auto-run on file select
         uploadFile(e.target.files[0]);
       }
     }
 
     function submitChosenFile() {
+      hideError();
       const fileInput = document.getElementById('pdf-input');
       if (fileInput && fileInput.files && fileInput.files.length > 0) {
         uploadFile(fileInput.files[0]);
       } else {
-        alert('Please click "Choose File" first to select your PYQ PDF.');
+        showError('Please click "Choose File" first to select your PYQ PDF document.');
       }
+    }
+
+    function showError(msg) {
+      const errBanner = document.getElementById('upload-error-banner');
+      const errMsg = document.getElementById('upload-error-message');
+      errMsg.innerText = msg;
+      errBanner.classList.remove('hidden');
+      updateIcons();
+    }
+
+    function hideError() {
+      const errBanner = document.getElementById('upload-error-banner');
+      errBanner.classList.add('hidden');
     }
 
     async function uploadFile(file) {
       if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
-        alert('Please select a valid .PDF file.');
+        showError('Please select a valid .PDF document.');
         return;
       }
 
+      hideError();
       const statusEl = document.getElementById('upload-status');
       const statusText = document.getElementById('upload-status-text');
+      const btn = document.getElementById('btn-process');
+      const btnText = document.getElementById('btn-text');
+
+      // Visual Loading state on button
+      btn.disabled = true;
+      btnText.innerText = 'Extracting MCQs... Please wait';
       statusEl.classList.remove('hidden');
       statusText.innerText = `Extracting MCQs from "${file.name}"... Parsing questions and detecting topics.`;
       updateIcons();
@@ -586,9 +619,11 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
 
         const data = await res.json();
         statusEl.classList.add('hidden');
+        btn.disabled = false;
+        btnText.innerText = '🚀 Extract Questions & Start Quiz';
 
         if (!res.ok) {
-          alert(`Notice: ${data.detail || 'Could not process PDF. Ensure it contains selectable text.'}`);
+          showError(`Server Note: ${data.detail || 'Could not process PDF. Please ensure the PDF has selectable text.'}`);
           return;
         }
 
@@ -596,7 +631,9 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         displayTopicBreakdown(data);
       } catch (err) {
         statusEl.classList.add('hidden');
-        alert(`Upload error: ${err.message}`);
+        btn.disabled = false;
+        btnText.innerText = '🚀 Extract Questions & Start Quiz';
+        showError(`Network/Upload error: ${err.message}. Please check connection or file size.`);
       }
     }
 
@@ -1299,7 +1336,8 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
 
     finalize_question(current_q)
 
-    if len(questions) == 0 and len(raw_text.strip()) > 50:
+    # Fallback if no specific question tags were matched
+    if len(questions) == 0 and len(raw_text.strip()) > 30:
         blocks = [b.strip() for b in raw_text.split("\n\n") if len(b.strip()) > 20]
         for idx, block in enumerate(blocks[:100]):
             questions.append({
@@ -1360,7 +1398,10 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     raw_text = extract_text_from_pdf(saved_pdf_path)
     if not raw_text.strip():
-        raise HTTPException(status_code=400, detail="Could not extract readable text from PDF. Ensure this is not an image-only scan.")
+        raise HTTPException(
+            status_code=400,
+            detail="Could not extract text from this PDF. This happens if the PDF contains scanned photos of pages instead of digital text. Please ensure your PDF has selectable text."
+        )
 
     parsed_quiz = parse_pyq_document(raw_text, file.filename)
     if parsed_quiz["total_questions"] == 0:
