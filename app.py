@@ -30,7 +30,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-  <!-- Google Fonts: Inter + Noto Sans Devanagari for perfect Hindi typography -->
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -92,7 +92,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
     </div>
 
     <div class="flex items-center gap-2.5">
-      <!-- Language Mode Selector -->
       <div class="hidden sm:flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 text-xs font-bold">
         <button id="lang-btn-both" onclick="setLangFilter('both')" class="px-2.5 py-1 rounded-lg bg-indigo-600 text-white shadow-sm transition">Both (द्विभाषी)</button>
         <button id="lang-btn-en" onclick="setLangFilter('en')" class="px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition">English</button>
@@ -117,7 +116,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
     <!-- ================= VIEW 1: UPLOAD & TOPIC SELECTION ================= -->
     <section id="view-upload" class="space-y-8 block">
       
-      <!-- Banner -->
       <div class="text-center max-w-2xl mx-auto pt-2 pb-2">
         <span class="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 rounded-full">
           ⚡ 100% PDF-Extracted • Hindi & English Bilingual
@@ -126,62 +124,52 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
           Upload Any Exam PYQ PDF.<br/><span class="text-indigo-600 dark:text-indigo-400">Auto-Detect Topics & Start Quiz.</span>
         </h2>
         <p class="mt-3 text-sm text-slate-600 dark:text-slate-400">
-          Upload your Previous Year Question paper (SSC, UPSC, NEET, JEE, State Exams, Railways). The system extracts all MCQs, separates English/Hindi text, detects topics, and creates an instant exam room.
+          Upload your Previous Year Question paper. The system extracts all MCQs, separates English/Hindi text, detects topics, and creates an instant quiz room.
         </p>
       </div>
 
-      <!-- Upload Zone with Multi-Way Selection -->
-      <div class="max-w-2xl mx-auto space-y-4">
-        
-        <!-- Dropzone Box -->
-        <div id="drop-zone" class="border-2 border-dashed border-indigo-300 dark:border-indigo-800/70 hover:border-indigo-600 dark:hover:border-indigo-400 rounded-2xl p-8 text-center bg-white dark:bg-slate-900/60 shadow-lg shadow-indigo-500/5 transition">
-          <div class="w-16 h-16 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+      <!-- Upload Zone Card -->
+      <div class="max-w-2xl mx-auto">
+        <div id="drop-zone" class="border-2 border-dashed border-indigo-300 dark:border-indigo-800/70 hover:border-indigo-600 dark:hover:border-indigo-400 rounded-3xl p-8 sm:p-10 text-center bg-white dark:bg-slate-900/60 shadow-xl shadow-indigo-500/5 transition space-y-6">
+          
+          <div class="w-16 h-16 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-inner">
             <i data-lucide="file-up" class="w-8 h-8"></i>
           </div>
           
-          <h3 class="mt-4 text-base sm:text-lg font-bold text-slate-800 dark:text-slate-200">
-            Select or Drag & Drop your PYQ PDF File
-          </h3>
-          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Supports Question Papers, Unit Tests, and 3000+ Question Books (Bilingual Hindi & English)
-          </p>
-
-          <!-- Explicit Input & Button -->
-          <div class="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <input type="file" id="pdf-input" accept=".pdf,application/pdf" class="block w-full sm:w-auto text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer" onchange="handleFileSelect(event)" />
+          <div>
+            <h3 class="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-200">
+              Select your PYQ PDF File
+            </h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Supports Question Papers, Unit Tests, and 3000+ Question Books
+            </p>
           </div>
 
-          <!-- Selected File Preview & Upload Trigger -->
-          <div id="file-preview-card" class="mt-4 hidden p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between gap-3">
-            <div class="flex items-center gap-2 overflow-hidden text-left">
-              <i data-lucide="file-text" class="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0"></i>
-              <div class="truncate">
-                <p id="preview-filename" class="text-xs font-bold text-slate-900 dark:text-white truncate">exam_paper.pdf</p>
-                <p id="preview-filesize" class="text-[10px] text-slate-500">2.4 MB</p>
-              </div>
-            </div>
-            <button id="btn-process-file" onclick="processSelectedFile()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow-md shrink-0 flex items-center gap-1.5 transition">
-              <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
-              <span>Process PDF</span>
+          <!-- File Chooser Container -->
+          <div class="flex flex-col items-center justify-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+            <input type="file" id="pdf-input" accept=".pdf,application/pdf" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer" onchange="handleFileSelect(event)" />
+            
+            <!-- Large Prominent Process Button -->
+            <button id="btn-process" onclick="submitChosenFile()" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition transform active:scale-98">
+              <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+              <span>🚀 Extract Questions & Start Quiz</span>
             </button>
           </div>
 
           <!-- Status Indicator -->
-          <div id="upload-status" class="mt-4 hidden">
-            <div class="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-3">
+          <div id="upload-status" class="hidden">
+            <div class="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-center gap-3">
               <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-              <span id="upload-status-text">Processing PDF... Extracting questions and detecting topics.</span>
+              <span id="upload-status-text">Processing PDF... Extracting all questions and topics.</span>
             </div>
           </div>
 
         </div>
-
       </div>
 
       <!-- Detected Topics & Test Mode Selector -->
       <div id="topics-section" class="hidden max-w-4xl mx-auto space-y-6">
         
-        <!-- Paper Overview Card -->
         <div class="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
@@ -192,7 +180,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
               <p id="quiz-stats" class="text-xs text-slate-500 dark:text-slate-400 mt-1">Questions Extracted (Bilingual Support)</p>
             </div>
 
-            <!-- Fast Quiz Mode Options -->
             <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <button onclick="startQuiz('all', 25)" class="flex-1 sm:flex-none px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold rounded-xl text-xs transition">
                 ⚡ Quick 25 MCQ Mock
@@ -208,7 +195,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
           </div>
         </div>
 
-        <!-- Topics List -->
         <div>
           <h4 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
             Auto-Detected Topics / Subjects
@@ -236,7 +222,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
     <!-- ================= VIEW 2: QUIZ ROOM ================= -->
     <section id="view-quiz" class="hidden space-y-5">
       
-      <!-- Top Bar -->
       <div class="glass-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2">
@@ -253,20 +238,17 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         </div>
 
         <div class="flex items-center gap-3">
-          <!-- Language Toggle in Quiz Bar -->
           <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 text-xs font-bold">
             <button onclick="setLangFilter('both')" class="px-2 py-1 rounded-lg text-[11px] font-bold lang-pill active-lang bg-indigo-600 text-white" id="pill-both">Both</button>
             <button onclick="setLangFilter('en')" class="px-2 py-1 rounded-lg text-[11px] font-bold lang-pill text-slate-600 dark:text-slate-300" id="pill-en">EN</button>
             <button onclick="setLangFilter('hi')" class="px-2 py-1 rounded-lg text-[11px] font-bold lang-pill text-slate-600 dark:text-slate-300" id="pill-hi">हिन्दी</button>
           </div>
 
-          <!-- Timer -->
           <div class="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
             <i data-lucide="clock" class="w-4 h-4 text-indigo-600 dark:text-indigo-400"></i>
             <span id="quiz-timer" class="font-mono text-xs sm:text-sm font-bold">00:00</span>
           </div>
 
-          <!-- Submit -->
           <button onclick="confirmSubmitQuiz()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-1.5 transition">
             <i data-lucide="check-circle" class="w-4 h-4"></i>
             <span>Submit</span>
@@ -274,10 +256,8 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <!-- Main Body -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
         
-        <!-- Left Question Panel (8 cols) -->
         <div class="lg:col-span-8 space-y-4">
           <div class="glass-card rounded-2xl p-6 sm:p-8 space-y-6 min-h-[420px] flex flex-col justify-between shadow-sm">
             
@@ -294,14 +274,10 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
                 </div>
               </div>
 
-              <!-- Question Text (Bilingual Rendering) -->
               <div id="q-text-container" class="space-y-2"></div>
-
-              <!-- Options Container -->
               <div id="q-options" class="space-y-3 pt-2"></div>
             </div>
 
-            <!-- Bottom Navigation buttons -->
             <div class="flex items-center justify-between pt-6 border-t border-slate-200 dark:border-slate-800">
               <button onclick="prevQuestion()" id="btn-prev" class="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-xl flex items-center gap-1 transition">
                 <i data-lucide="chevron-left" class="w-4 h-4"></i>
@@ -321,7 +297,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
           </div>
         </div>
 
-        <!-- Right: Paginated / Chunked Question Palette (4 cols) -->
         <div class="lg:col-span-4 space-y-4">
           <div class="glass-card rounded-2xl p-5 space-y-4">
             <div class="flex items-center justify-between">
@@ -332,10 +307,8 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
               </select>
             </div>
 
-            <!-- Question Numbers Grid -->
             <div id="palette-grid" class="grid grid-cols-5 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto p-1"></div>
 
-            <!-- Legend & Stats -->
             <div class="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
               <div class="grid grid-cols-2 gap-2 text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 <div class="flex items-center gap-2">
@@ -367,7 +340,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
     <!-- ================= VIEW 3: SCORECARD & DETAILED REVIEW ================= -->
     <section id="view-results" class="hidden space-y-8">
       
-      <!-- Score Overview -->
       <div class="glass-card rounded-3xl p-8 text-center relative overflow-hidden shadow-lg">
         <div class="max-w-md mx-auto space-y-4">
           <span class="px-3.5 py-1 text-xs font-bold uppercase tracking-wider rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400">
@@ -382,7 +354,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
             </div>
           </div>
 
-          <!-- Quick Stats Grid -->
           <div class="grid grid-cols-3 gap-3">
             <div class="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40">
               <div id="stat-correct" class="text-xl font-black text-emerald-600 dark:text-emerald-400">0</div>
@@ -398,7 +369,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
             </div>
           </div>
 
-          <!-- Actions -->
           <div class="flex items-center justify-center gap-3 pt-2">
             <button onclick="retakeActiveQuiz()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-2 transition">
               <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
@@ -411,7 +381,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         </div>
       </div>
 
-      <!-- Topic Performance Breakdown -->
       <div id="topic-breakdown-card" class="glass-card rounded-2xl p-6 space-y-4">
         <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           Topic-Wise Performance Breakdown
@@ -419,7 +388,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         <div id="topic-performance-list" class="space-y-3"></div>
       </div>
 
-      <!-- Detailed Review & Explanation Section -->
       <div class="space-y-4">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 class="text-lg font-extrabold text-slate-900 dark:text-white">
@@ -452,7 +420,6 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
     let reviewData = null;
     let currentLangFilter = 'both';
     let currentPaletteChunk = 0;
-    let selectedFileObject = null;
     const CHUNK_SIZE = 100;
 
     function updateIcons() {
@@ -574,46 +541,38 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         e.preventDefault();
         e.stopPropagation();
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          handleFile(e.dataTransfer.files[0]);
+          const file = e.dataTransfer.files[0];
+          uploadFile(file);
         }
       });
     }
 
     function handleFileSelect(e) {
       if (e.target && e.target.files && e.target.files.length > 0) {
-        handleFile(e.target.files[0]);
+        // Automatically start processing as soon as a file is picked
+        uploadFile(e.target.files[0]);
       }
     }
 
-    function handleFile(file) {
-      if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
-        alert('Please choose a valid .PDF document.');
-        return;
-      }
-
-      selectedFileObject = file;
-
-      // Show preview card
-      document.getElementById('preview-filename').innerText = file.name;
-      document.getElementById('preview-filesize').innerText = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
-      document.getElementById('file-preview-card').classList.remove('hidden');
-      updateIcons();
-
-      // Automatically trigger upload & processing
-      uploadFile(file);
-    }
-
-    function processSelectedFile() {
-      if (selectedFileObject) {
-        uploadFile(selectedFileObject);
+    function submitChosenFile() {
+      const fileInput = document.getElementById('pdf-input');
+      if (fileInput && fileInput.files && fileInput.files.length > 0) {
+        uploadFile(fileInput.files[0]);
+      } else {
+        alert('Please click "Choose File" first to select your PYQ PDF.');
       }
     }
 
     async function uploadFile(file) {
+      if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Please select a valid .PDF file.');
+        return;
+      }
+
       const statusEl = document.getElementById('upload-status');
       const statusText = document.getElementById('upload-status-text');
       statusEl.classList.remove('hidden');
-      statusText.innerText = `Processing "${file.name}"... Extracting all MCQs and topics.`;
+      statusText.innerText = `Extracting MCQs from "${file.name}"... Parsing questions and detecting topics.`;
       updateIcons();
 
       const formData = new FormData();
@@ -629,7 +588,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
         statusEl.classList.add('hidden');
 
         if (!res.ok) {
-          alert(`Notice: ${data.detail || 'Could not process PDF. Please check that the PDF contains selectable text.'}`);
+          alert(`Notice: ${data.detail || 'Could not process PDF. Ensure it contains selectable text.'}`);
           return;
         }
 
@@ -644,7 +603,7 @@ EMBEDDED_HTML_PAGE = """<!DOCTYPE html>
     function displayTopicBreakdown(data) {
       document.getElementById('topics-section').classList.remove('hidden');
       document.getElementById('quiz-title').innerText = data.title;
-      document.getElementById('quiz-stats').innerText = `${data.total_questions.toLocaleString()} Questions Extracted across ${data.topics.length} Topics (Bilingual Support)`;
+      document.getElementById('quiz-stats').innerText = `${data.total_questions.toLocaleString()} Questions Detected across ${data.topics.length} Topics (Bilingual Support)`;
 
       const grid = document.getElementById('topics-grid');
       grid.innerHTML = '';
@@ -1151,12 +1110,7 @@ def save_db(data: Dict[str, Any]):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def extract_text_from_pdf(pdf_path: Path) -> str:
-    """
-    Robust streaming PDF text extractor with error tolerance and encryption handling.
-    """
     full_text = []
-    
-    # 1. Primary: Fast pypdf streaming
     try:
         reader = pypdf.PdfReader(str(pdf_path))
         if reader.is_encrypted:
@@ -1171,7 +1125,7 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
                 if txt and txt.strip():
                     full_text.append(f"--- PAGE {page_idx + 1} ---\n" + txt)
             except Exception as page_err:
-                print(f"Error extracting page {page_idx + 1}: {page_err}")
+                print(f"Error page {page_idx + 1}: {page_err}")
                 continue
 
         if full_text:
@@ -1179,7 +1133,6 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
     except Exception as e:
         print(f"pypdf reader error: {e}")
 
-    # 2. Fallback: pdfplumber layout engine
     if pdfplumber:
         try:
             with pdfplumber.open(str(pdf_path)) as pdf:
@@ -1193,17 +1146,13 @@ def extract_text_from_pdf(pdf_path: Path) -> str:
             if full_text:
                 return "\n".join(full_text)
         except Exception as e:
-            print(f"pdfplumber fallback error: {e}")
+            print(f"pdfplumber error: {e}")
 
     return ""
 
 def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
-    """
-    Universal Parser for 1 to 3,100+ MCQs with Hindi & English support.
-    """
     lines = raw_text.splitlines()
 
-    # 1. End of Document Answer Key Parser
     global_answer_key: Dict[int, str] = {}
     ans_key_section = re.search(r"(?:ANSWER\s*KEYS?|ANSWERS|SOLUTIONS?|KEY SHEET|उत्तर\s*माला|उत्तर)\s*[\:\n](.*)", raw_text, re.IGNORECASE | re.DOTALL)
     if ans_key_section:
@@ -1217,20 +1166,17 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
             except ValueError:
                 continue
 
-    # 2. Topic/Subject Headings Patterns (English + Hindi)
     topic_header_re = re.compile(
         r"^(?:(?:PART|SECTION|UNIT|MODULE|CHAPTER|TOPIC|SUBJECT|भाग|खंड|इकाई|अध्याय|विषय)[\s\:\-\–]+([A-Z0-9\.\s\-\–&]+)|"
         r"(PHYSICS|CHEMISTRY|MATHEMATICS|BIOLOGY|GENERAL KNOWLEDGE|REASONING|APTITUDE|ENGLISH|HINDI|POLITY|HISTORY|GEOGRAPHY|ECONOMICS|COMPUTER SCIENCE|DATA STRUCTURES|ALGORITHMS|ELECTRICAL|MECHANICAL|CIVIL|इतिहास|भूगोल|राजनीति|विज्ञान|गणित|तर्कशक्ति|अर्थशास्त्र))(?:\s*[\:\-\–]|\s*$)",
         re.IGNORECASE
     )
 
-    # 3. Question Starter Patterns
     q_start_re = re.compile(
         r"^(?:(?:Q(?:uestion)?|प्र(?:श्न)?|Ques)\.?\s*(\d+)[\.\:\-\)\s]|(?:(\d+)[\.\)]\s+)|(?:\[(\d+)\]\s+))",
         re.IGNORECASE
     )
 
-    # 4. Inline Answer & Explanation Patterns
     inline_ans_re = re.compile(r"(?:Ans(?:wer)?|Correct(?:\s*Option)?|Key|उत्तर)[\s\:\.\-\–=]+\(?\s*([A-Da-d1-4]|क|ख|ग|घ)\s*\)?", re.IGNORECASE)
     explanation_re = re.compile(r"(?:Explanation|Solution|Hint|Details?|व्याख्या|हल)[\s\:\.\-\\–]+(.*)", re.IGNORECASE | re.DOTALL)
 
@@ -1262,7 +1208,6 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
         cleaned_body = inline_ans_re.sub("", raw_q_text)
         cleaned_body = explanation_re.sub("", cleaned_body).strip()
 
-        # Parse Options
         options = []
         option_matches = list(re.finditer(
             r"(?:[\(\[\{]?([A-Da-d1-4]|क|ख|ग|घ)[\)\]\}][\.\s\:\-\–]*|\b([A-Da-d])[\.\:]\s+)(.*?)(?=(?:[\(\[\{]?(?:[A-Da-d1-4]|क|ख|ग|घ)[\)\]\}][\.\s\:\-\–]*|\b[A-Da-d][\.\:]\s+)|$)",
@@ -1354,7 +1299,6 @@ def parse_pyq_document(raw_text: str, filename: str) -> Dict[str, Any]:
 
     finalize_question(current_q)
 
-    # Fallback if unformatted text was provided
     if len(questions) == 0 and len(raw_text.strip()) > 50:
         blocks = [b.strip() for b in raw_text.split("\n\n") if len(b.strip()) > 20]
         for idx, block in enumerate(blocks[:100]):
@@ -1416,7 +1360,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     raw_text = extract_text_from_pdf(saved_pdf_path)
     if not raw_text.strip():
-        raise HTTPException(status_code=400, detail="Could not extract readable text from PDF. Ensure this is not an image-only scanned PDF.")
+        raise HTTPException(status_code=400, detail="Could not extract readable text from PDF. Ensure this is not an image-only scan.")
 
     parsed_quiz = parse_pyq_document(raw_text, file.filename)
     if parsed_quiz["total_questions"] == 0:
